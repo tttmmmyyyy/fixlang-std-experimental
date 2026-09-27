@@ -54,8 +54,9 @@ namespace TextOut {
     // * `out` - The text written so far.
     _write_to_ptr : I64 -> (Ptr -> IO I64) -> TextOut -> TextOut = |max_size, write, out| (
         let size = out.@_bytes.@size;
-        // `resize` leaves the array unshared, so `write` writes into this array and no other.
-        let bytes = out._bytes_with_room_for(max_size).resize(size + max_size, 0_U8);
+        // `_unsafe_grow_size` leaves the array unshared, so `write` writes into this array and no
+        // other. The slots it adds are left uninitialized, and `write` fills the ones kept.
+        let bytes = out._reserve_to_append(max_size)._unsafe_grow_size(size + max_size);
         let (bytes, length) = bytes.mutate_elements(|ptr| write(ptr.add_offset(size)));
         TextOut { _bytes : bytes.truncate(size + length) }
     );
@@ -68,11 +69,11 @@ namespace TextOut {
     _write_spaces : I64 -> TextOut -> TextOut = |count, out| (
         if count <= 0 { out };
         let size = out.@_bytes.@size;
-        TextOut { _bytes : out._bytes_with_room_for(count).resize(size + count, ' ') }
+        TextOut { _bytes : out._reserve_to_append(count).resize(size + count, ' ') }
     );
 
-    // Returns the bytes of `out`, with enough space reserved to append `count` more bytes without
-    // reallocating.
+    // Reserves space to append `count` more bytes to the bytes of `out` without reallocating, and
+    // returns the bytes.
     //
     // When the space runs short, this reserves at least twice the current capacity, as
     // `Array::push_back` and `Array::append` do. So writing a long text piece by piece reallocates
@@ -81,7 +82,7 @@ namespace TextOut {
     // # Parameters
     // * `count` - The number of bytes to be written.
     // * `out` - The text written so far.
-    _bytes_with_room_for : I64 -> TextOut -> Array U8 = |count, out| (
+    _reserve_to_append : I64 -> TextOut -> Array U8 = |count, out| (
         let bytes = out.@_bytes;
         let size = bytes.@size + count;
         if size <= bytes.@capacity { bytes };

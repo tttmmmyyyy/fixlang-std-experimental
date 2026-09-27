@@ -9,6 +9,7 @@ test : IO () = (
     test_with_separator;;
     test_aligned;;
     test_user_type;;
+    test_shared_out;;
     pure()
 );
 
@@ -142,5 +143,26 @@ test_user_type : IO () = (
     let p = Point { x : 3, y : 0.5 };
     assert_eq(|_|"alone", "p = {}".format((p,)), "p = (3, 0.5)");;
     assert_eq(|_|"in an array", "{}".format(([p, p],)), "[(3, 0.5), (3, 0.5)]");;
+    pure()
+);
+
+type TwoTries = struct { value : I64 };
+
+// Writes the value into `out` twice, keeps the second text, and drops the first, so that `out` is
+// shared when the second write begins.
+impl TwoTries : Format {
+    write_text = |t, out| (
+        let first = out.write_text(t.@value).write_text(" first");
+        let second = out.write_text(t.@value).write_text(" second");
+        eval first;
+        second
+    );
+}
+
+// A `TextOut` that is shared when a value is written into it is copied first, so each copy holds
+// the text written into it alone.
+test_shared_out : IO () = (
+    assert_eq(|_|"shared", "[{}]".format((TwoTries { value : 42 },)), "[42 second]");;
+    assert_eq(|_|"shared float", "[{}]".format(((TwoTries { value : 7 }, 2.5),)), "[(7 second, 2.5)]");;
     pure()
 );
