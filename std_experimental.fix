@@ -41,18 +41,20 @@ format : [args : FormatArgs] args -> String -> String = |values, template| (
 type TextOut = struct { _bytes : Array U8 };
 
 namespace TextOut {
-    // Writes at the end of `out` the text a C function writes.
+    // Appends to `out` the text that `write` writes to a pointer.
     //
-    // The C function is given a pointer to `max_size` bytes, writes at most `max_size - 1` of them
-    // followed by a null, and returns how many bytes it wrote, the null left out.
+    // `write` is given a pointer to `max_size` bytes at the end of `out`. It writes the text there,
+    // at most `max_size - 1` bytes followed by a null, and returns the length of the text, the null
+    // left out. A writer of the Fix runtime, such as `fixruntime_i64_to_str`, called by `FFI_CALL_IO`,
+    // is such a function.
     //
     // # Parameters
-    // * `max_size` - The number of bytes the C function may write, the null included.
-    // * `write` - Calls the C function on the pointer it is given.
+    // * `max_size` - The number of bytes `write` may write, the null included.
+    // * `write` - Writes the text to the pointer it is given.
     // * `out` - The text written so far.
-    _write_by_c : I64 -> (Ptr -> IO I64) -> TextOut -> TextOut = |max_size, write, out| (
+    _write_to_ptr : I64 -> (Ptr -> IO I64) -> TextOut -> TextOut = |max_size, write, out| (
         let size = out.@_bytes.@size;
-        // `resize` leaves the array unshared, so the C function writes into this array and no other.
+        // `resize` leaves the array unshared, so `write` writes into this array and no other.
         let bytes = out._bytes_with_room_for(max_size).resize(size + max_size, 0_U8);
         let (bytes, length) = bytes.mutate_elements(|ptr| write(ptr.add_offset(size)));
         TextOut { _bytes : bytes.truncate(size + length) }
@@ -229,52 +231,52 @@ impl () : Format {
 }
 
 impl U8 : Format {
-    write_text = |v, out| out._write_by_c(4, |ptr| FFI_CALL_IO[I64 fixruntime_u8_to_str(Ptr, U8), ptr, v]);
+    write_text = |v, out| out._write_to_ptr(4, |ptr| FFI_CALL_IO[I64 fixruntime_u8_to_str(Ptr, U8), ptr, v]);
 }
 
 impl I8 : Format {
-    write_text = |v, out| out._write_by_c(5, |ptr| FFI_CALL_IO[I64 fixruntime_i8_to_str(Ptr, I8), ptr, v]);
+    write_text = |v, out| out._write_to_ptr(5, |ptr| FFI_CALL_IO[I64 fixruntime_i8_to_str(Ptr, I8), ptr, v]);
 }
 
 impl U16 : Format {
-    write_text = |v, out| out._write_by_c(6, |ptr| FFI_CALL_IO[I64 fixruntime_u16_to_str(Ptr, U16), ptr, v]);
+    write_text = |v, out| out._write_to_ptr(6, |ptr| FFI_CALL_IO[I64 fixruntime_u16_to_str(Ptr, U16), ptr, v]);
 }
 
 impl I16 : Format {
-    write_text = |v, out| out._write_by_c(7, |ptr| FFI_CALL_IO[I64 fixruntime_i16_to_str(Ptr, I16), ptr, v]);
+    write_text = |v, out| out._write_to_ptr(7, |ptr| FFI_CALL_IO[I64 fixruntime_i16_to_str(Ptr, I16), ptr, v]);
 }
 
 impl U32 : Format {
-    write_text = |v, out| out._write_by_c(11, |ptr| FFI_CALL_IO[I64 fixruntime_u32_to_str(Ptr, U32), ptr, v]);
+    write_text = |v, out| out._write_to_ptr(11, |ptr| FFI_CALL_IO[I64 fixruntime_u32_to_str(Ptr, U32), ptr, v]);
 }
 
 impl I32 : Format {
-    write_text = |v, out| out._write_by_c(12, |ptr| FFI_CALL_IO[I64 fixruntime_i32_to_str(Ptr, I32), ptr, v]);
+    write_text = |v, out| out._write_to_ptr(12, |ptr| FFI_CALL_IO[I64 fixruntime_i32_to_str(Ptr, I32), ptr, v]);
 }
 
 impl U64 : Format {
-    write_text = |v, out| out._write_by_c(21, |ptr| FFI_CALL_IO[I64 fixruntime_u64_to_str(Ptr, U64), ptr, v]);
+    write_text = |v, out| out._write_to_ptr(21, |ptr| FFI_CALL_IO[I64 fixruntime_u64_to_str(Ptr, U64), ptr, v]);
 }
 
 impl I64 : Format {
-    write_text = |v, out| out._write_by_c(21, |ptr| FFI_CALL_IO[I64 fixruntime_i64_to_str(Ptr, I64), ptr, v]);
+    write_text = |v, out| out._write_to_ptr(21, |ptr| FFI_CALL_IO[I64 fixruntime_i64_to_str(Ptr, I64), ptr, v]);
 }
 
 // Writes the value like `ToString`: sixteen hexadecimal digits.
 impl Ptr : Format {
-    write_text = |v, out| out._write_by_c(17, |ptr| FFI_CALL_IO[I64 fixruntime_ptr_to_str(Ptr, Ptr), ptr, v]);
+    write_text = |v, out| out._write_to_ptr(17, |ptr| FFI_CALL_IO[I64 fixruntime_ptr_to_str(Ptr, Ptr), ptr, v]);
 }
 
 // Writes the value like `ToString`: in its shortest round-trip decimal form.
 impl F32 : Format {
     // The size is the one `ToString` gives the same C function.
-    write_text = |v, out| out._write_by_c(17, |ptr| FFI_CALL_IO[I64 fixruntime_f32_to_str_shortest(Ptr, I64, F32), ptr, 17, v]);
+    write_text = |v, out| out._write_to_ptr(17, |ptr| FFI_CALL_IO[I64 fixruntime_f32_to_str_shortest(Ptr, I64, F32), ptr, 17, v]);
 }
 
 // Writes the value like `ToString`: in its shortest round-trip decimal form.
 impl F64 : Format {
     // The size is the one `ToString` gives the same C function.
-    write_text = |v, out| out._write_by_c(25, |ptr| FFI_CALL_IO[I64 fixruntime_f64_to_str_shortest(Ptr, I64, F64), ptr, 25, v]);
+    write_text = |v, out| out._write_to_ptr(25, |ptr| FFI_CALL_IO[I64 fixruntime_f64_to_str_shortest(Ptr, I64, F64), ptr, 25, v]);
 }
 
 // Writes the value like `ToString`: `some(x)` or `none()`.
@@ -341,7 +343,7 @@ impl WithPrecision F32 : Format {
         let v = w.@_value;
         // The size is the one `F32::to_string_precision` gives the same C function.
         let size = 42 + precision.i64;
-        out._write_by_c(size, |ptr| FFI_CALL_IO[I64 fixruntime_f32_to_str_precision(Ptr, I64, F32, U8), ptr, size, v, precision])
+        out._write_to_ptr(size, |ptr| FFI_CALL_IO[I64 fixruntime_f32_to_str_precision(Ptr, I64, F32, U8), ptr, size, v, precision])
     );
 }
 
@@ -351,7 +353,7 @@ impl WithPrecision F64 : Format {
         let v = w.@_value;
         // The size is the one `F64::to_string_precision` gives the same C function.
         let size = 312 + precision.i64;
-        out._write_by_c(size, |ptr| FFI_CALL_IO[I64 fixruntime_f64_to_str_precision(Ptr, I64, F64, U8), ptr, size, v, precision])
+        out._write_to_ptr(size, |ptr| FFI_CALL_IO[I64 fixruntime_f64_to_str_precision(Ptr, I64, F64, U8), ptr, size, v, precision])
     );
 }
 
