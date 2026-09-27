@@ -46,6 +46,5 @@ This library calls functions of the Fix runtime and private values of `Std`, whi
 ## Development
 
 - `fix test` runs the tests.
-- `./test_aborts.sh` checks that `format` stops the program on a template that does not match its values.
-- `./gen_tuples.py` writes the implementations for tuples into `std_experimental.fix`.
+- In `tools`, `fix run -- test-aborts` checks that `format` stops the program on a template that does not match its values, and `fix run -- gen-tuples` writes the implementations for tuples into `std_experimental.fix`. Both need `--allow-preliminary-commands` the first time, for the `make` that the dependency `subprocess` runs.
 - `fix docs -m Std.Experimental -o docs` writes the document.

@@ -1,0 +1,126 @@
+// The scripts that maintain std-experimental. Run them in this directory:
+//
+// - `fix run -- gen-tuples` writes the implementations of `Format` and `FormatArgs` for tuples into
+//   `std_experimental.fix`.
+// - `fix run -- test-aborts [<fix>]` checks that `format` stops the program, with the report it
+//   names, on each kind of template that does not match its values. `fix test` cannot check this,
+//   since the program under test is the one that stops. `<fix>` names the compiler, `fix` by
+//   default.
+module Main;
+
+import EZS;
+
+main : IO () = (
+    let args = *get_args;
+    let command = args.argument_or(1, "");
+    if command == "gen-tuples" { gen_tuples };
+    if command == "test-aborts" { test_aborts(args.argument_or(2, "fix")) };
+    eprintln("usage: fix run -- gen-tuples | fix run -- test-aborts [<fix>]");;
+    exit(1)
+);
+
+// The command-line argument at `index`, or `default` where there is none.
+//
+// # Parameters
+// * `index` - The index in `args`; 0 is the program itself.
+// * `default` - The value where `args` has no argument at `index`.
+// * `args` - The command-line arguments.
+argument_or : I64 -> String -> Array String -> String = |index, default, args| (
+    if index >= args.@size { default };
+    args.@(index)
+);
+
+// The source of the library, as seen from this directory.
+source_path : String = "../std_experimental.fix";
+
+// The line after which `gen_tuples` writes the implementations.
+begin_mark : String = "// BEGIN tuple implementations, written by `fix run -- gen-tuples` in `tools`.";
+
+// The line before which `gen_tuples` stops writing.
+end_mark : String = "// END tuple implementations.";
+
+// The greatest number of elements of a tuple `Format` and `FormatArgs` are implemented for.
+max_tuple_size : I64 = 12;
+
+// Writes the implementations for the tuples of 1 to `max_tuple_size` elements into the source,
+// replacing the lines between `begin_mark` and `end_mark`.
+gen_tuples : IO () = (
+    do {
+        let source = *read_file_string(source_path);
+        let begin = source.find(begin_mark, 0).as_some + begin_mark.@size;
+        let end = source.find(end_mark, begin).as_some;
+        let impls = range(1, max_tuple_size + 1).map(tuple_impls).join("\n");
+        write_file_string(source_path, source.get_sub(0, begin) + "\n" + impls + "\n\n" + source.get_sub(end, source.@size))
+    }.try(exit_with_msg(1))
+);
+
+// The implementations of `Format` and `FormatArgs` for the tuple of `size` elements, each preceded
+// by an empty line.
+//
+// # Parameters
+// * `size` - The number of elements, 1 or more.
+tuple_impls : I64 -> String = |size| (
+    let close = (
+        if size == 1 { ",)" };
+        ")"
+    );
+    let names = |prefix| range(0, size).map(|i| prefix + i.to_string);
+    let constraints = names("t").map(|t| t + " : Format").join(", ");
+    let tuple_type = "(" + names("t").join(", ") + close;
+    let pattern = "(" + names("x").join(", ") + close;
+    let elements = names("x").map(|x| ".write_text(" + x + ")").join(".write_text(\", \")");
+    let puts = names("x").map(|x| "._put_next(" + x + ")").concat_iter;
+    [
+        "",
+        // `Format` writes the tuple like `ToString`: `(x0, x1)`, and `(x0,)` for one element.
+        "impl [" + constraints + "] " + tuple_type + " : Format {",
+        "    write_text = |" + pattern + ", out| out.write_text(\"(\")" + elements + ".write_text(\"" + close + "\");",
+        "}",
+        "",
+        "impl [" + constraints + "] " + tuple_type + " : FormatArgs {",
+        "    write_args = |" + pattern + ", cursor| cursor" + puts + ";",
+        "}"
+    ].to_iter.join("\n")
+);
+
+// Checks each template of `abort_cases`, and exits with 1 if any of them did not stop the program
+// with its report.
+//
+// # Parameters
+// * `fix` - The compiler.
+test_aborts : String -> IO () = |fix| (
+    let ctx = EZS::Context::default.set_eprint_stderr(false);
+    let source = *EZS::cwd(ctx) + "/" + source_path;
+    let dir = (*EZS::run_o(["mktemp", "-d"], ctx)).strip_last_newlines;
+    // The compiler runs in `dir`, where no project file joins its files to the ones it is given.
+    EZS::cd(dir, ctx);;
+    let failures = *abort_cases.to_iter.fold_m(0, |(expression, report), failures| (
+        let main_path = dir + "/main.fix";
+        let main_source = "module Main;\nimport Std.Experimental;\nmain : IO () = println(" + expression + ");\n";
+        write_file_string(main_path, main_source).try(exit_with_msg(1));;
+        let (out, err, code) = *EZS::run_oec([fix, "run", "-f", source, "-f", main_path], ctx);
+        let output = out + err;
+        if code == 0_U8 {
+            eprintln("FAIL: " + expression + " ran to the end");;
+            pure $ failures + 1
+        };
+        if output.find(report, 0).is_none {
+            eprintln("FAIL: " + expression + " stopped without the report \"" + report + "\":\n" + output);;
+            pure $ failures + 1
+        };
+        println("ok: " + expression);;
+        pure $ failures
+    ));
+    EZS::run_o(["rm", "-rf", dir], ctx);;
+    if failures > 0 { exit(1) };
+    pure()
+);
+
+// Each template `test_aborts` checks, as an expression calling `format`, with the report the program
+// stops with.
+abort_cases : Array (String, String) = [
+    ("\"{} and\".format((1, 2))", "The template has fewer placeholders than the values: \"{} and\""),
+    ("\"{} and {}\".format((1,))", "The template has more placeholders than the values: \"{} and {}\""),
+    ("\"a } b\".format(())", "The template has a \"}\" that is neither a placeholder nor an escape: \"a } b\""),
+    ("\"a {\".format(())", "The template has a \"{\" that is neither a placeholder nor an escape: \"a {\"")
+];

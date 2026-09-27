@@ -2,8 +2,7 @@ module Test;
 
 import Std.Experimental;
 
-test : IO ();
-test = (
+test : IO () = (
     test_placeholders;;
     test_same_text_as_to_string;;
     test_with_precision;;
@@ -15,8 +14,7 @@ test = (
 
 // `format` replaces each `{}` by the next value and each `{{` and `}}` by a brace, at the start, the
 // middle and the end of the template, for no values, one and several.
-test_placeholders : IO ();
-test_placeholders = (
+test_placeholders : IO () = (
     assert_eq(|_|"case 1", "".format(()), "");;
     assert_eq(|_|"case 2", "123".format(()), "123");;
     assert_eq(|_|"case 3", "{{".format(()), "{");;
@@ -36,16 +34,18 @@ test_placeholders = (
 );
 
 // Asserts that `format` writes `x` as `to_string` does, alone and after other text.
-check_to_string : [a : Format, a : ToString] String -> a -> IO ();
-check_to_string = |name, x| (
+//
+// # Parameters
+// * `name` - What the assertion is about, for the message of a failing one.
+// * `x` - The value written.
+check_to_string : [a : Format, a : ToString] String -> a -> IO () = |name, x| (
     assert_eq(|_|name + " alone", "{}".format((x,)), x.to_string);;
     assert_eq(|_|name + " after text", "ab{}cd".format((x,)), "ab" + x.to_string + "cd")
 );
 
 // Each type this module implements `Format` for writes the text its `to_string` returns, on the
 // boundary values of each type.
-test_same_text_as_to_string : IO ();
-test_same_text_as_to_string = (
+test_same_text_as_to_string : IO () = (
     check_to_string("true", true);;
     check_to_string("false", false);;
     check_to_string("unit", ());;
@@ -84,8 +84,7 @@ test_same_text_as_to_string = (
 
 // `with_precision` writes what `to_string_precision` returns, for `F32` and `F64`, at each precision
 // up to the greatest, on values whose texts are the widest.
-test_with_precision : IO ();
-test_with_precision = (
+test_with_precision : IO () = (
     let f32s = [-3.4028235e38_F32, 3.14159_F32, -0.0_F32, 1.0e-10_F32];
     let f64s = [-1.7976931348623157e308, 3.14159, -0.0, 1.0e-300];
     range(0, 256).fold_m((), |p, _| (
@@ -101,8 +100,7 @@ test_with_precision = (
 
 // `with_separator` writes the elements with the separator between each two, for no elements, one
 // and several, and for an empty separator.
-test_with_separator : IO ();
-test_with_separator = (
+test_with_separator : IO () = (
     assert_eq(|_|"none", "[{}]".format((([] : Array I64).with_separator(", "),)), "[]");;
     assert_eq(|_|"one", "[{}]".format(([1].with_separator(", "),)), "[1]");;
     assert_eq(|_|"several", "[{}]".format(([1, 2, 3].with_separator(" | "),)), "[1 | 2 | 3]");;
@@ -117,8 +115,7 @@ test_with_separator = (
 // narrower text is padded, a text as wide or wider is written as it is, a text of multibyte
 // characters is counted by characters, and the value may itself be a wrapper. The value is written
 // after other text, so the padding goes where the value starts.
-test_aligned : IO ();
-test_aligned = (
+test_aligned : IO () = (
     assert_eq(|_|"right narrower", "ab[{}]".format((42.right_aligned_to(5),)), "ab[   42]");;
     assert_eq(|_|"right as wide", "[{}]".format((12345.right_aligned_to(5),)), "[12345]");;
     assert_eq(|_|"right wider", "[{}]".format(("toolong".right_aligned_to(3),)), "[toolong]");;
@@ -141,8 +138,7 @@ impl Point : Format {
 
 // A user type implementing `Format` by writing its parts is written by `format`, also inside a
 // container.
-test_user_type : IO ();
-test_user_type = (
+test_user_type : IO () = (
     let p = Point { x : 3, y : 0.5 };
     assert_eq(|_|"alone", "p = {}".format((p,)), "p = (3, 0.5)");;
     assert_eq(|_|"in an array", "{}".format(([p, p],)), "[(3, 0.5), (3, 0.5)]");;

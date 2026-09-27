@@ -1,0 +1,14 @@
+[general]
+name = "std-experimental-tools"
+version = "0.1.0"
+description = "The scripts that maintain std-experimental."
+fix_version = "1.5.0"
+license = "MIT"
+
+[build]
+files = ["main.fix"]
+
+[[dependencies]]
+name = "ez-scripting"
+version = "0.4.0"
+git = { url = "https://github.com/tttmmmyyyy/ez_scripting.git" }

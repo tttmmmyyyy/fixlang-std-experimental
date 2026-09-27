@@ -25,8 +25,7 @@ module Std.Experimental;
 // # Parameters
 // * `values` - The values written into the placeholders, in order.
 // * `template` - The template.
-format : [args : FormatArgs] args -> String -> String;
-format = |values, template| (
+format : [args : FormatArgs] args -> String -> String = |values, template| (
     let cursor = TemplateCursor {
         _template : template,
         _at : 0,
@@ -51,8 +50,7 @@ namespace TextOut {
     // * `max_size` - The number of bytes the C function may write, the null included.
     // * `write` - Calls the C function on the pointer it is given.
     // * `out` - The text written so far.
-    _write_by_c : I64 -> (Ptr -> IO I64) -> TextOut -> TextOut;
-    _write_by_c = |max_size, write, out| (
+    _write_by_c : I64 -> (Ptr -> IO I64) -> TextOut -> TextOut = |max_size, write, out| (
         let size = out.@_bytes.@size;
         // `resize` leaves the array unshared, so the C function writes into this array and no other.
         let bytes = out._bytes_with_room_for(max_size).resize(size + max_size, 0_U8);
@@ -65,8 +63,7 @@ namespace TextOut {
     // # Parameters
     // * `count` - The number of spaces. A number less than 1 writes nothing.
     // * `out` - The text written so far.
-    _write_spaces : I64 -> TextOut -> TextOut;
-    _write_spaces = |count, out| (
+    _write_spaces : I64 -> TextOut -> TextOut = |count, out| (
         if count <= 0 { out };
         let size = out.@_bytes.@size;
         TextOut { _bytes : out._bytes_with_room_for(count).resize(size + count, ' ') }
@@ -80,8 +77,7 @@ namespace TextOut {
     // # Parameters
     // * `count` - The number of bytes to be written.
     // * `out` - The text written so far.
-    _bytes_with_room_for : I64 -> TextOut -> Array U8;
-    _bytes_with_room_for = |count, out| (
+    _bytes_with_room_for : I64 -> TextOut -> Array U8 = |count, out| (
         let bytes = out.@_bytes;
         let size = bytes.@size + count;
         if size <= bytes.@capacity { bytes };
@@ -93,12 +89,12 @@ namespace TextOut {
     // # Parameters
     // * `start` - The byte at which the counted text begins. It begins a code point.
     // * `out` - The text written so far.
-    _count_code_points_from : I64 -> TextOut -> I64;
-    _count_code_points_from = |start, out| (
+    _count_code_points_from : I64 -> TextOut -> I64 = |start, out| (
         let bytes = out.@_bytes;
         // Each code point has one byte that is not a continuation byte `0b10xxxxxx`.
         range(start, bytes.@size).fold(0, |i, count|
-            if bytes.@(i).bit_and(0xC0_U8) == 0x80_U8 { count } else { count + 1 }
+            if bytes.@(i).bit_and(0xC0_U8) == 0x80_U8 { count };
+            count + 1
         )
     );
 }
@@ -155,8 +151,7 @@ namespace TemplateCursor {
     // # Parameters
     // * `value` - The value written into the placeholder.
     // * `cursor` - The template, and how far it has been written.
-    _put_next : [a : Format] a -> TemplateCursor -> TemplateCursor;
-    _put_next = |value, cursor| (
+    _put_next : [a : Format] a -> TemplateCursor -> TemplateCursor = |value, cursor| (
         let TemplateCursor { _template : template, _at : at, _out : out } = cursor;
         let (at, out) = _write_literal(template, at, out);
         if at == template.@size {
@@ -169,8 +164,7 @@ namespace TemplateCursor {
     //
     // # Parameters
     // * `cursor` - The template, and how far it has been written.
-    _finish : TemplateCursor -> String;
-    _finish = |cursor| (
+    _finish : TemplateCursor -> String = |cursor| (
         let TemplateCursor { _template : template, _at : at, _out : out } = cursor;
         let (at, out) = _write_literal(template, at, out);
         if at < template.@size {
@@ -190,8 +184,7 @@ namespace TemplateCursor {
     // * `template` - The template.
     // * `at` - The byte from which the text is written.
     // * `out` - The text written so far.
-    _write_literal : String -> I64 -> TextOut -> (I64, TextOut);
-    _write_literal = |template, at, out| (
+    _write_literal : String -> I64 -> TextOut -> (I64, TextOut) = |template, at, out| (
         let bytes = template.get_bytes;
         let size = template.@size;
         let (at, bytes_out) = loop((at, out.@_bytes), |(i, bytes_out)|
@@ -214,7 +207,10 @@ impl () : FormatArgs {
 
 // Writes the value like `ToString`: `true` or `false`.
 impl Bool : Format {
-    write_text = |b, out| out.write_text(if b { "true" } else { "false" });
+    write_text = |b, out| (
+        if b { out.write_text("true") };
+        out.write_text("false")
+    );
 }
 
 impl String : Format {
@@ -318,8 +314,7 @@ namespace F32 {
     // # Parameters
     // * `precision` - The number of digits after the decimal point.
     // * `v` - The floating number.
-    with_precision : U8 -> F32 -> WithPrecision F32;
-    with_precision = |precision, v| WithPrecision { _precision : precision, _value : v };
+    with_precision : U8 -> F32 -> WithPrecision F32 = |precision, v| WithPrecision { _precision : precision, _value : v };
 }
 
 namespace F64 {
@@ -335,8 +330,7 @@ namespace F64 {
     // # Parameters
     // * `precision` - The number of digits after the decimal point.
     // * `v` - The floating number.
-    with_precision : U8 -> F64 -> WithPrecision F64;
-    with_precision = |precision, v| WithPrecision { _precision : precision, _value : v };
+    with_precision : U8 -> F64 -> WithPrecision F64 = |precision, v| WithPrecision { _precision : precision, _value : v };
 }
 
 impl WithPrecision F32 : Format {
@@ -377,18 +371,17 @@ namespace Array {
     // # Parameters
     // * `separator` - The text written between each two elements.
     // * `elements` - The elements.
-    with_separator : String -> Array a -> WithSeparator a;
-    with_separator = |separator, elements| WithSeparator { _separator : separator, _elements : elements };
+    with_separator : String -> Array a -> WithSeparator a = |separator, elements| WithSeparator { _separator : separator, _elements : elements };
 }
 
 impl [a : Format] WithSeparator a : Format {
     write_text = |w, out| (
         let separator = w.@_separator;
         let elements = w.@_elements;
-        range(0, elements.@size).fold(out, |i, out| (
-            let out = if i == 0 { out } else { out.write_text(separator) };
-            out.write_text(elements.@(i))
-        ))
+        if elements.is_empty { out };
+        range(1, elements.@size).fold(out.write_text(elements.@(0)), |i, out|
+            out.write_text(separator).write_text(elements.@(i))
+        )
     );
 }
 
@@ -409,8 +402,7 @@ type RightAligned a = struct { _width : I64, _value : a };
 // # Parameters
 // * `width` - The number of Unicode code points the text takes at least.
 // * `value` - The value.
-right_aligned_to : I64 -> a -> RightAligned a;
-right_aligned_to = |width, value| RightAligned { _width : width, _value : value };
+right_aligned_to : I64 -> a -> RightAligned a = |width, value| RightAligned { _width : width, _value : value };
 
 impl [a : Format] RightAligned a : Format {
     write_text = |aligned, out| (
@@ -450,8 +442,7 @@ type LeftAligned a = struct { _width : I64, _value : a };
 // # Parameters
 // * `width` - The number of Unicode code points the text takes at least.
 // * `value` - The value.
-left_aligned_to : I64 -> a -> LeftAligned a;
-left_aligned_to = |width, value| LeftAligned { _width : width, _value : value };
+left_aligned_to : I64 -> a -> LeftAligned a = |width, value| LeftAligned { _width : width, _value : value };
 
 impl [a : Format] LeftAligned a : Format {
     write_text = |aligned, out| (
@@ -461,7 +452,7 @@ impl [a : Format] LeftAligned a : Format {
     );
 }
 
-// BEGIN tuple implementations generated by `gen_tuples.py`.
+// BEGIN tuple implementations, written by `fix run -- gen-tuples` in `tools`.
 
 impl [t0 : Format] (t0,) : Format {
     write_text = |(x0,), out| out.write_text("(").write_text(x0).write_text(",)");
@@ -559,4 +550,4 @@ impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Form
     write_args = |(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11), cursor| cursor._put_next(x0)._put_next(x1)._put_next(x2)._put_next(x3)._put_next(x4)._put_next(x5)._put_next(x6)._put_next(x7)._put_next(x8)._put_next(x9)._put_next(x10)._put_next(x11);
 }
 
-// END tuple implementations generated by `gen_tuples.py`.
+// END tuple implementations.
