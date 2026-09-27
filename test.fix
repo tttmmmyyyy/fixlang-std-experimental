@@ -1,0 +1,150 @@
+module Test;
+
+import Std.Experimental;
+
+test : IO ();
+test = (
+    test_placeholders;;
+    test_same_text_as_to_string;;
+    test_with_precision;;
+    test_with_separator;;
+    test_aligned;;
+    test_user_type;;
+    pure()
+);
+
+// `format` replaces each `{}` by the next value and each `{{` and `}}` by a brace, at the start, the
+// middle and the end of the template, for no values, one and several.
+test_placeholders : IO ();
+test_placeholders = (
+    assert_eq(|_|"case 1", "".format(()), "");;
+    assert_eq(|_|"case 2", "123".format(()), "123");;
+    assert_eq(|_|"case 3", "{{".format(()), "{");;
+    assert_eq(|_|"case 4", "123{{".format(()), "123{");;
+    assert_eq(|_|"case 5", "{{123".format(()), "{123");;
+    assert_eq(|_|"case 6", "}}".format(()), "}");;
+    assert_eq(|_|"case 7", "123}}123".format(()), "123}123");;
+    assert_eq(|_|"case 8", "{}".format(("123",)), "123");;
+    assert_eq(|_|"case 9", "{}{}".format(("123", "456")), "123456");;
+    assert_eq(|_|"case 10", " {} {} ".format(("123", "456")), " 123 456 ");;
+    assert_eq(|_|"case 11", "{{{}}}".format((1,)), "{1}");;
+    assert_eq(|_|"case 12", "{{}}".format(()), "{}");;
+    assert_eq(|_|"case 13", "{} + {} = {}".format((1, 2.5, "three")), "1 + 2.5 = three");;
+    assert_eq(|_|"case 14", "あ{}い{}う".format(("え", 1)), "あえい1う");;
+    assert_eq(|_|"case 15", "{}{}{}{}{}{}{}{}{}{}{}{}".format((1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)), "123456789101112");;
+    pure()
+);
+
+// Asserts that `format` writes `x` as `to_string` does, alone and after other text.
+check_to_string : [a : Format, a : ToString] String -> a -> IO ();
+check_to_string = |name, x| (
+    assert_eq(|_|name + " alone", "{}".format((x,)), x.to_string);;
+    assert_eq(|_|name + " after text", "ab{}cd".format((x,)), "ab" + x.to_string + "cd")
+);
+
+// Each type this module implements `Format` for writes the text its `to_string` returns, on the
+// boundary values of each type.
+test_same_text_as_to_string : IO ();
+test_same_text_as_to_string = (
+    check_to_string("true", true);;
+    check_to_string("false", false);;
+    check_to_string("unit", ());;
+    check_to_string("empty string", "");;
+    check_to_string("string", "Hello, 世界");;
+    check_to_string("U8 min", 0_U8);; check_to_string("U8 max", 255_U8);;
+    check_to_string("I8 min", -128_I8);; check_to_string("I8 max", 127_I8);;
+    check_to_string("U16 max", 65535_U16);;
+    check_to_string("I16 min", -32768_I16);; check_to_string("I16 max", 32767_I16);;
+    check_to_string("U32 max", 4294967295_U32);;
+    check_to_string("I32 min", -2147483648_I32);; check_to_string("I32 max", 2147483647_I32);;
+    check_to_string("U64 max", 18446744073709551615_U64);;
+    check_to_string("I64 min", -9223372036854775808);; check_to_string("I64 max", 9223372036854775807);;
+    check_to_string("I64 zero", 0);;
+    check_to_string("null pointer", nullptr);;
+    check_to_string("F32 zero", 0.0_F32);; check_to_string("F32 negative zero", -0.0_F32);;
+    check_to_string("F32 tenth", 0.1_F32);; check_to_string("F32 least", -3.4028235e38_F32);;
+    check_to_string("F32 large", 1.0e13_F32);; check_to_string("F32 small", 1.0e-10_F32);;
+    check_to_string("F32 infinity", F32::infinity);; check_to_string("F32 nan", F32::quiet_nan);;
+    check_to_string("F64 tenth", 0.1);; check_to_string("F64 least", -1.7976931348623157e308);;
+    check_to_string("F64 subnormal", -2.2250738585072014e-308);; check_to_string("F64 large", 1.0e300);;
+    check_to_string("F64 negative infinity", -F64::infinity);; check_to_string("F64 nan", F64::quiet_nan);;
+    check_to_string("some", Option::some(5));;
+    check_to_string("none", Option::none() : Option I64);;
+    check_to_string("ok", Result::ok(1) : Result String I64);;
+    check_to_string("err", Result::err("e") : Result String I64);;
+    check_to_string("empty array", [] : Array I64);;
+    check_to_string("array", [1, 2, 3]);;
+    check_to_string("nested", [Option::some((1, "a")), Option::none()]);;
+    check_to_string("tuple 1", (7,));;
+    check_to_string("tuple 2", (1, "a"));;
+    check_to_string("tuple 5", (1, 2.5, "c", true, [()]));;
+    check_to_string("tuple 12", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12));;
+    pure()
+);
+
+// `with_precision` writes what `to_string_precision` returns, for `F32` and `F64`, at each precision
+// up to the greatest, on values whose texts are the widest.
+test_with_precision : IO ();
+test_with_precision = (
+    let f32s = [-3.4028235e38_F32, 3.14159_F32, -0.0_F32, 1.0e-10_F32];
+    let f64s = [-1.7976931348623157e308, 3.14159, -0.0, 1.0e-300];
+    range(0, 256).fold_m((), |p, _| (
+        let prec = p.u8;
+        f32s.to_iter.fold_m((), |v, _|
+            assert_eq(|_|"F32 " + v.to_string + " " + p.to_string, "[{}]".format((v.with_precision(prec),)), "[" + v.to_string_precision(prec) + "]")
+        );;
+        f64s.to_iter.fold_m((), |v, _|
+            assert_eq(|_|"F64 " + v.to_string + " " + p.to_string, "[{}]".format((v.with_precision(prec),)), "[" + v.to_string_precision(prec) + "]")
+        )
+    ))
+);
+
+// `with_separator` writes the elements with the separator between each two, for no elements, one
+// and several, and for an empty separator.
+test_with_separator : IO ();
+test_with_separator = (
+    assert_eq(|_|"none", "[{}]".format((([] : Array I64).with_separator(", "),)), "[]");;
+    assert_eq(|_|"one", "[{}]".format(([1].with_separator(", "),)), "[1]");;
+    assert_eq(|_|"several", "[{}]".format(([1, 2, 3].with_separator(" | "),)), "[1 | 2 | 3]");;
+    assert_eq(|_|"empty separator", "[{}]".format((["a", "b"].with_separator(""),)), "[ab]");;
+    // Many numbers in a row make the text grow many times.
+    let many = Array::from_map(10000, |i| i);
+    assert_eq(|_|"many", "{}".format((many.with_separator(","),)), many.to_iter.map(to_string).join(","));;
+    pure()
+);
+
+// `right_aligned_to` and `left_aligned_to` pad the text of the value to the width in code points: a
+// narrower text is padded, a text as wide or wider is written as it is, a text of multibyte
+// characters is counted by characters, and the value may itself be a wrapper. The value is written
+// after other text, so the padding goes where the value starts.
+test_aligned : IO ();
+test_aligned = (
+    assert_eq(|_|"right narrower", "ab[{}]".format((42.right_aligned_to(5),)), "ab[   42]");;
+    assert_eq(|_|"right as wide", "[{}]".format((12345.right_aligned_to(5),)), "[12345]");;
+    assert_eq(|_|"right wider", "[{}]".format(("toolong".right_aligned_to(3),)), "[toolong]");;
+    assert_eq(|_|"right zero width", "[{}]".format(("x".right_aligned_to(0),)), "[x]");;
+    assert_eq(|_|"right multibyte", "[{}]".format(("あい".right_aligned_to(4),)), "[  あい]");;
+    assert_eq(|_|"right empty", "[{}]".format(("".right_aligned_to(2),)), "[  ]");;
+    assert_eq(|_|"right wrapper", "[{}]".format((3.14159.with_precision(2_U8).right_aligned_to(6),)), "[  3.14]");;
+    assert_eq(|_|"left narrower", "ab[{}]".format((42.left_aligned_to(5),)), "ab[42   ]");;
+    assert_eq(|_|"left wider", "[{}]".format(("toolong".left_aligned_to(3),)), "[toolong]");;
+    assert_eq(|_|"left multibyte", "[{}]".format(("あい".left_aligned_to(4),)), "[あい  ]");;
+    assert_eq(|_|"two in a row", "{}{}".format((1.right_aligned_to(3), 2.left_aligned_to(3))), "  12  ");;
+    pure()
+);
+
+type Point = struct { x : I64, y : F64 };
+
+impl Point : Format {
+    write_text = |p, out| out.write_text("(").write_text(p.@x).write_text(", ").write_text(p.@y).write_text(")");
+}
+
+// A user type implementing `Format` by writing its parts is written by `format`, also inside a
+// container.
+test_user_type : IO ();
+test_user_type = (
+    let p = Point { x : 3, y : 0.5 };
+    assert_eq(|_|"alone", "p = {}".format((p,)), "p = (3, 0.5)");;
+    assert_eq(|_|"in an array", "{}".format(([p, p],)), "[(3, 0.5), (3, 0.5)]");;
+    pure()
+);
