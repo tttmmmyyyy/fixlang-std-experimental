@@ -1,6 +1,6 @@
 [general]
 name = "std-experimental"
-version = "0.2.0"
+version = "0.2.1"
 description = "Provides the module `Std.Experimental`: additions to `Std` whose design is not settled yet."
 fix_version = "1.5.0"
 license = "MIT"
