@@ -10,7 +10,133 @@ Anything here may change or be removed in any version. When its design settles, 
 
 ## Values
 
-### namespace Std.Experimental
+### namespace Std.Experimental::Array
+
+#### with_separator
+
+Type: `Std::String -> Std::Array a -> Std.Experimental::Format::WithSeparator a`
+
+Wraps `elements` so that `format` writes them with `separator` between them.
+
+##### Examples
+
+```
+"{}".format(([1, 2, 3].with_separator(", "),))   // "1, 2, 3"
+```
+
+##### Parameters
+
+* `separator` - The text to write between two elements.
+* `elements` - The elements.
+
+### namespace Std.Experimental::F32
+
+#### with_precision
+
+Type: `Std::U8 -> Std::F32 -> Std.Experimental::Format::WithPrecision Std::F32`
+
+Wraps `v` so that `format` writes it with `precision` digits after the decimal point, as
+`F32::to_string_precision` does.
+
+##### Examples
+
+```
+"{}".format((3.14159_F32.with_precision(2_U8),))   // "3.14"
+```
+
+##### Parameters
+
+* `precision` - The number of digits after the decimal point.
+* `v` - The number.
+
+### namespace Std.Experimental::F64
+
+#### with_precision
+
+Type: `Std::U8 -> Std::F64 -> Std.Experimental::Format::WithPrecision Std::F64`
+
+Wraps `v` so that `format` writes it with `precision` digits after the decimal point, as
+`F64::to_string_precision` does.
+
+##### Examples
+
+```
+"{}".format((3.14159.with_precision(2_U8),))   // "3.14"
+```
+
+##### Parameters
+
+* `precision` - The number of digits after the decimal point.
+* `v` - The number.
+
+### namespace Std.Experimental::Format
+
+#### left_aligned_to
+
+Type: `Std::I64 -> a -> Std.Experimental::Format::LeftAligned a`
+
+Wraps `value` so that `format` pads its text with spaces on the right to `width` Unicode code
+points. A text that already has `width` code points or more is written unchanged.
+
+##### Examples
+
+```
+"[{}]".format((42.left_aligned_to(5),))   // "[42   ]"
+```
+
+##### Parameters
+
+* `width` - The minimum width, in Unicode code points.
+* `value` - The value to write.
+
+#### right_aligned_to
+
+Type: `Std::I64 -> a -> Std.Experimental::Format::RightAligned a`
+
+Wraps `value` so that `format` pads its text with spaces on the left to `width` Unicode code
+points. A text that already has `width` code points or more is written unchanged.
+
+##### Examples
+
+```
+"[{}]".format((42.right_aligned_to(5),))   // "[   42]"
+```
+
+##### Parameters
+
+* `width` - The minimum width, in Unicode code points.
+* `value` - The value to write.
+
+#### write_text
+
+Type: `[a : Std.Experimental::Format] a -> Std.Experimental::Format::TextOut -> Std.Experimental::Format::TextOut`
+
+Trait member of `Std.Experimental::Format`
+
+Appends the text of `value` to `out`.
+
+##### Parameters
+
+* `value` - The value to write.
+* `out` - The text written so far.
+
+### namespace Std.Experimental::FormatArgs
+
+#### write_args
+
+Type: `[args : Std.Experimental::FormatArgs] args -> Std.Experimental::FormatArgs::TemplateCursor -> Std.Experimental::FormatArgs::TemplateCursor`
+
+Trait member of `Std.Experimental::FormatArgs`
+
+Writes each value into the next placeholder of the template, after the template text before
+that placeholder.
+
+##### Parameters
+
+* `values` - The values.
+* `cursor` - The template and how much of it has been written.
+
+### namespace Std.Experimental::String
 
 #### format
 
@@ -40,135 +166,9 @@ template has a `{` or `}` that is not part of a placeholder or an escape.
 * `values` - The values to write, in order.
 * `template` - The template.
 
-#### left_aligned_to
-
-Type: `Std::I64 -> a -> Std.Experimental::LeftAligned a`
-
-Wraps `value` so that `format` pads its text with spaces on the right to `width` Unicode code
-points. A text that already has `width` code points or more is written unchanged.
-
-##### Examples
-
-```
-"[{}]".format((42.left_aligned_to(5),))   // "[42   ]"
-```
-
-##### Parameters
-
-* `width` - The minimum width, in Unicode code points.
-* `value` - The value to write.
-
-#### right_aligned_to
-
-Type: `Std::I64 -> a -> Std.Experimental::RightAligned a`
-
-Wraps `value` so that `format` pads its text with spaces on the left to `width` Unicode code
-points. A text that already has `width` code points or more is written unchanged.
-
-##### Examples
-
-```
-"[{}]".format((42.right_aligned_to(5),))   // "[   42]"
-```
-
-##### Parameters
-
-* `width` - The minimum width, in Unicode code points.
-* `value` - The value to write.
-
-### namespace Std.Experimental::Array
-
-#### with_separator
-
-Type: `Std::String -> Std::Array a -> Std.Experimental::WithSeparator a`
-
-Wraps `elements` so that `format` writes them with `separator` between them.
-
-##### Examples
-
-```
-"{}".format(([1, 2, 3].with_separator(", "),))   // "1, 2, 3"
-```
-
-##### Parameters
-
-* `separator` - The text to write between two elements.
-* `elements` - The elements.
-
-### namespace Std.Experimental::F32
-
-#### with_precision
-
-Type: `Std::U8 -> Std::F32 -> Std.Experimental::WithPrecision Std::F32`
-
-Wraps `v` so that `format` writes it with `precision` digits after the decimal point, as
-`F32::to_string_precision` does.
-
-##### Examples
-
-```
-"{}".format((3.14159_F32.with_precision(2_U8),))   // "3.14"
-```
-
-##### Parameters
-
-* `precision` - The number of digits after the decimal point.
-* `v` - The number.
-
-### namespace Std.Experimental::F64
-
-#### with_precision
-
-Type: `Std::U8 -> Std::F64 -> Std.Experimental::WithPrecision Std::F64`
-
-Wraps `v` so that `format` writes it with `precision` digits after the decimal point, as
-`F64::to_string_precision` does.
-
-##### Examples
-
-```
-"{}".format((3.14159.with_precision(2_U8),))   // "3.14"
-```
-
-##### Parameters
-
-* `precision` - The number of digits after the decimal point.
-* `v` - The number.
-
-### namespace Std.Experimental::Format
-
-#### write_text
-
-Type: `[a : Std.Experimental::Format] a -> Std.Experimental::TextOut -> Std.Experimental::TextOut`
-
-Trait member of `Std.Experimental::Format`
-
-Appends the text of `value` to `out`.
-
-##### Parameters
-
-* `value` - The value to write.
-* `out` - The text written so far.
-
-### namespace Std.Experimental::FormatArgs
-
-#### write_args
-
-Type: `[args : Std.Experimental::FormatArgs] args -> Std.Experimental::TemplateCursor -> Std.Experimental::TemplateCursor`
-
-Trait member of `Std.Experimental::FormatArgs`
-
-Writes each value into the next placeholder of the template, after the template text before
-that placeholder.
-
-##### Parameters
-
-* `values` - The values.
-* `cursor` - The template and how much of it has been written.
-
 ## Types and aliases
 
-### namespace Std.Experimental
+### namespace Std.Experimental::Format
 
 #### LeftAligned
 
@@ -181,13 +181,6 @@ A value padded with spaces on the right to a width. Created by `left_aligned_to`
 Defined as: `type RightAligned a = unbox struct { ...fields... }`
 
 A value padded with spaces on the left to a width. Created by `right_aligned_to`.
-
-#### TemplateCursor
-
-Defined as: `type TemplateCursor = unbox struct { ...fields... }`
-
-A template that `format` is filling in: the template, the position up to which it has been
-written, and the text written so far.
 
 #### TextOut
 
@@ -210,6 +203,15 @@ A floating-point number written with a fixed number of digits after the decimal 
 Defined as: `type WithSeparator a = unbox struct { ...fields... }`
 
 The elements of an array, written with a separator between them. Created by `with_separator`.
+
+### namespace Std.Experimental::FormatArgs
+
+#### TemplateCursor
+
+Defined as: `type TemplateCursor = unbox struct { ...fields... }`
+
+A template that `format` is filling in: the template, the position up to which it has been
+written, and the text written so far.
 
 ## Traits and aliases
 
@@ -239,7 +241,7 @@ impl Point : Format {
 
 ##### method `write_text`
 
-Type: `a -> Std.Experimental::TextOut -> Std.Experimental::TextOut`
+Type: `a -> Std.Experimental::Format::TextOut -> Std.Experimental::Format::TextOut`
 
 Appends the text of `value` to `out`.
 
@@ -255,7 +257,7 @@ implement `Format`.
 
 ##### method `write_args`
 
-Type: `args -> Std.Experimental::TemplateCursor -> Std.Experimental::TemplateCursor`
+Type: `args -> Std.Experimental::FormatArgs::TemplateCursor -> Std.Experimental::FormatArgs::TemplateCursor`
 
 Writes each value into the next placeholder of the template, after the template text before
 that placeholder.
@@ -321,15 +323,15 @@ Writes `()`, as `to_string` does.
 
 ### impl `[t0 : Std.Experimental::Format] (t0,) : Std.Experimental::FormatArgs`
 
-### impl `[a : Std.Experimental::Format] Std.Experimental::LeftAligned a : Std.Experimental::Format`
+### impl `[a : Std.Experimental::Format] Std.Experimental::Format::LeftAligned a : Std.Experimental::Format`
 
-### impl `[a : Std.Experimental::Format] Std.Experimental::RightAligned a : Std.Experimental::Format`
+### impl `[a : Std.Experimental::Format] Std.Experimental::Format::RightAligned a : Std.Experimental::Format`
 
-### impl `Std.Experimental::WithPrecision Std::F32 : Std.Experimental::Format`
+### impl `Std.Experimental::Format::WithPrecision Std::F32 : Std.Experimental::Format`
 
-### impl `Std.Experimental::WithPrecision Std::F64 : Std.Experimental::Format`
+### impl `Std.Experimental::Format::WithPrecision Std::F64 : Std.Experimental::Format`
 
-### impl `[a : Std.Experimental::Format] Std.Experimental::WithSeparator a : Std.Experimental::Format`
+### impl `[a : Std.Experimental::Format] Std.Experimental::Format::WithSeparator a : Std.Experimental::Format`
 
 ### impl `[a : Std.Experimental::Format] Std::Array a : Std.Experimental::Format`
 

@@ -7,8 +7,8 @@ import Std::{
     Option::{none, some}, Result::{err, ok}, String::join, ToString::to_string, ToU8::u8
 };
 import Std.Experimental::{
-    format, left_aligned_to, right_aligned_to, Format, Array::with_separator, F32::with_precision, 
-    F64::with_precision, Format::write_text
+    Format, Array::with_separator, F32::with_precision, F64::with_precision, 
+    Format::{left_aligned_to, right_aligned_to, write_text}, String::format
 };
 
 test : IO () = (

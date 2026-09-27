@@ -4,14 +4,14 @@ The module `Std.Experimental` for the [Fix programming language](https://github.
 
 ## Contents
 
-- `format` replaces the placeholders `{}` in a template with values, which may have different types. Each value is written directly into the result, so `format` creates no intermediate string for each value.
+- `String::format` replaces the placeholders `{}` in a template with values, which may have different types. Each value is written directly into the result, so `format` creates no intermediate string for each value.
 
   ```
   "{} + {} = {}".format((1, 2.5, "three"))   // "1 + 2.5 = three"
   ```
 
 - The trait `Format`. Implement it for a type so that `format` can write its values.
-- Wrappers that change how a value is written: `F32::with_precision`, `F64::with_precision`, `Array::with_separator`, `right_aligned_to` and `left_aligned_to`.
+- Wrappers that change how a value is written: `F32::with_precision`, `F64::with_precision`, `Array::with_separator`, `Format::right_aligned_to` and `Format::left_aligned_to`.
 
   ```
   "[{}]".format((3.14159.with_precision(2_U8).right_aligned_to(6),))   // "[  3.14]"

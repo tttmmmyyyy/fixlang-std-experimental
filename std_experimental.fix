@@ -17,44 +17,48 @@ import Std::{
     U8::bit_and
 };
 
-// Replaces the placeholders `{}` in a template with values.
-//
-// Each `{}` is replaced with the text of the next value, as `Format` writes it. `{{` and `}}` are
-// written as `{` and `}`.
-//
-// Pass the values as a tuple. The values may have different types. Write `(x,)` for one value and
-// `()` for none.
-//
-// The program aborts if the number of placeholders differs from the number of values, or if the
-// template has a `{` or `}` that is not part of a placeholder or an escape.
-//
-// # Examples
-//
-// ```
-// "{} + {} = {}".format((1, 2.5, "three"))   // "1 + 2.5 = three"
-// "x = {}".format((42,))                      // "x = 42"
-// "{{{}}}".format((1,))                       // "{1}"
-// ```
-//
-// # Parameters
-// * `values` - The values to write, in order.
-// * `template` - The template.
-format : [args : FormatArgs] args -> String -> String = |values, template| (
-    let cursor = TemplateCursor {
-        _template : template,
-        _at : 0,
-        _out : TextOut { _bytes : Array::empty(2 * template.@size) }
-    };
-    cursor.write_args(values)._finish
-);
+namespace String {
+    // Replaces the placeholders `{}` in a template with values.
+    //
+    // Each `{}` is replaced with the text of the next value, as `Format` writes it. `{{` and `}}` are
+    // written as `{` and `}`.
+    //
+    // Pass the values as a tuple. The values may have different types. Write `(x,)` for one value and
+    // `()` for none.
+    //
+    // The program aborts if the number of placeholders differs from the number of values, or if the
+    // template has a `{` or `}` that is not part of a placeholder or an escape.
+    //
+    // # Examples
+    //
+    // ```
+    // "{} + {} = {}".format((1, 2.5, "three"))   // "1 + 2.5 = three"
+    // "x = {}".format((42,))                      // "x = 42"
+    // "{{{}}}".format((1,))                       // "{1}"
+    // ```
+    //
+    // # Parameters
+    // * `values` - The values to write, in order.
+    // * `template` - The template.
+    format : [args : FormatArgs] args -> String -> String = |values, template| (
+        let cursor = TemplateCursor {
+            _template : template,
+            _at : 0,
+            _out : TextOut { _bytes : Array::empty(2 * template.@size) }
+        };
+        cursor.write_args(values)._finish
+    );
+}
 
-// The text written so far. `Format::write_text` appends the text of a value to it.
-//
-// Text is only appended at the end. It never contains a null byte, because the text of a value
-// never does.
-type TextOut = struct { _bytes : Array U8 };
+namespace Format {
+    // The text written so far. `Format::write_text` appends the text of a value to it.
+    //
+    // Text is only appended at the end. It never contains a null byte, because the text of a value
+    // never does.
+    type TextOut = struct { _bytes : Array U8 };
+}
 
-namespace TextOut {
+namespace Format::TextOut {
     // Appends the text that `write` writes to a pointer.
     //
     // `write` receives a pointer to `max_size` bytes at the end of `out`. It writes the text there,
@@ -158,11 +162,13 @@ trait args : FormatArgs {
     write_args : args -> TemplateCursor -> TemplateCursor;
 }
 
-// A template that `format` is filling in: the template, the position up to which it has been
-// written, and the text written so far.
-type TemplateCursor = struct { _template : String, _at : I64, _out : TextOut };
+namespace FormatArgs {
+    // A template that `format` is filling in: the template, the position up to which it has been
+    // written, and the text written so far.
+    type TemplateCursor = struct { _template : String, _at : I64, _out : TextOut };
+}
 
-namespace TemplateCursor {
+namespace FormatArgs::TemplateCursor {
     // Writes the template text up to the next placeholder, then the text of `value` in place of the
     // placeholder.
     //
@@ -313,9 +319,11 @@ impl [a : Format] Array a : Format {
     write_text = |arr, out| out.write_text("[").write_text(arr.with_separator(", ")).write_text("]");
 }
 
-// A floating-point number written with a fixed number of digits after the decimal point. Created by
-// `F32::with_precision` or `F64::with_precision`.
-type WithPrecision a = struct { _precision : U8, _value : a };
+namespace Format {
+    // A floating-point number written with a fixed number of digits after the decimal point. Created by
+    // `F32::with_precision` or `F64::with_precision`.
+    type WithPrecision a = struct { _precision : U8, _value : a };
+}
 
 namespace F32 {
     // Wraps `v` so that `format` writes it with `precision` digits after the decimal point, as
@@ -369,8 +377,10 @@ impl WithPrecision F64 : Format {
     );
 }
 
-// The elements of an array, written with a separator between them. Created by `with_separator`.
-type WithSeparator a = struct { _separator : String, _elements : Array a };
+namespace Format {
+    // The elements of an array, written with a separator between them. Created by `with_separator`.
+    type WithSeparator a = struct { _separator : String, _elements : Array a };
+}
 
 namespace Array {
     // Wraps `elements` so that `format` writes them with `separator` between them.
@@ -398,22 +408,24 @@ impl [a : Format] WithSeparator a : Format {
     );
 }
 
-// A value padded with spaces on the left to a width. Created by `right_aligned_to`.
-type RightAligned a = struct { _width : I64, _value : a };
+namespace Format {
+    // A value padded with spaces on the left to a width. Created by `right_aligned_to`.
+    type RightAligned a = struct { _width : I64, _value : a };
 
-// Wraps `value` so that `format` pads its text with spaces on the left to `width` Unicode code
-// points. A text that already has `width` code points or more is written unchanged.
-//
-// # Examples
-//
-// ```
-// "[{}]".format((42.right_aligned_to(5),))   // "[   42]"
-// ```
-//
-// # Parameters
-// * `width` - The minimum width, in Unicode code points.
-// * `value` - The value to write.
-right_aligned_to : I64 -> a -> RightAligned a = |width, value| RightAligned { _width : width, _value : value };
+    // Wraps `value` so that `format` pads its text with spaces on the left to `width` Unicode code
+    // points. A text that already has `width` code points or more is written unchanged.
+    //
+    // # Examples
+    //
+    // ```
+    // "[{}]".format((42.right_aligned_to(5),))   // "[   42]"
+    // ```
+    //
+    // # Parameters
+    // * `width` - The minimum width, in Unicode code points.
+    // * `value` - The value to write.
+    right_aligned_to : I64 -> a -> RightAligned a = |width, value| RightAligned { _width : width, _value : value };
+}
 
 impl [a : Format] RightAligned a : Format {
     write_text = |aligned, out| (
@@ -436,22 +448,24 @@ impl [a : Format] RightAligned a : Format {
     );
 }
 
-// A value padded with spaces on the right to a width. Created by `left_aligned_to`.
-type LeftAligned a = struct { _width : I64, _value : a };
+namespace Format {
+    // A value padded with spaces on the right to a width. Created by `left_aligned_to`.
+    type LeftAligned a = struct { _width : I64, _value : a };
 
-// Wraps `value` so that `format` pads its text with spaces on the right to `width` Unicode code
-// points. A text that already has `width` code points or more is written unchanged.
-//
-// # Examples
-//
-// ```
-// "[{}]".format((42.left_aligned_to(5),))   // "[42   ]"
-// ```
-//
-// # Parameters
-// * `width` - The minimum width, in Unicode code points.
-// * `value` - The value to write.
-left_aligned_to : I64 -> a -> LeftAligned a = |width, value| LeftAligned { _width : width, _value : value };
+    // Wraps `value` so that `format` pads its text with spaces on the right to `width` Unicode code
+    // points. A text that already has `width` code points or more is written unchanged.
+    //
+    // # Examples
+    //
+    // ```
+    // "[{}]".format((42.left_aligned_to(5),))   // "[42   ]"
+    // ```
+    //
+    // # Parameters
+    // * `width` - The minimum width, in Unicode code points.
+    // * `value` - The value to write.
+    left_aligned_to : I64 -> a -> LeftAligned a = |width, value| LeftAligned { _width : width, _value : value };
+}
 
 impl [a : Format] LeftAligned a : Format {
     write_text = |aligned, out| (
