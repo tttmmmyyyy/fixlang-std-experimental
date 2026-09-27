@@ -10,7 +10,7 @@ import Std::{
     U64, U8, 
     Array::{
         @, @capacity, @size, _unsafe_grow_size, append, empty, is_empty, mutate_elements, pop_back, 
-        push_back, reserve, resize, set, truncate
+        push_back, reserve, resize, set, truncate, unsafe_set_bounds_unchecked
     }, 
     I64::_sign_and_magnitude, Iterator::{fold, range}, LessThan::max, LoopState::{break, continue}, 
     Option::{as_some, is_none}, Ptr::add_offset, Result::{as_err, as_ok, is_ok}, 
@@ -251,19 +251,25 @@ namespace FormatArgs::TemplateCursor {
     // * `at` - The byte to start from.
     // * `out` - The text written so far.
     _write_literal : String -> I64 -> TextOut -> (I64, TextOut) = |template, at, out| (
-        let bytes = template.get_bytes;
         let size = template.@size;
-        let (at, bytes_out) = loop((at, out.@_bytes), |(i, bytes_out)|
-            if i == size { break $ (i, bytes_out) };
+        if at == size { (at, out) };
+        let bytes = template.get_bytes;
+        // The text written is at most the rest of the template, so room for it is made once, and
+        // each byte is written without checking the room. The room left over is cut off at the end.
+        let start = out.@_bytes.@size;
+        let room = size - at;
+        let bytes_out = out._reserve_to_append(room)._unsafe_grow_size(start + room);
+        let (at, end, bytes_out) = loop((at, start, bytes_out), |(i, j, bytes_out)|
+            if i == size { break $ (i, j, bytes_out) };
             let c = bytes.@(i);
-            if c != '{' && c != '}' { continue $ (i + 1, bytes_out.push_back(c)) };
+            if c != '{' && c != '}' { continue $ (i + 1, j + 1, bytes_out.unsafe_set_bounds_unchecked(j, c)) };
             // A brace is always followed by another byte, since `bytes` ends with a null.
             let d = bytes.@(i + 1);
-            if c == '{' && d == '}' { break $ (i, bytes_out) };
-            if c == d { continue $ (i + 2, bytes_out.push_back(c)) };
+            if c == '{' && d == '}' { break $ (i, j, bytes_out) };
+            if c == d { continue $ (i + 2, j + 1, bytes_out.unsafe_set_bounds_unchecked(j, c)) };
             undefined("[Std.Experimental::format] The template has a \"" + String::from_U8(c) + "\" that is neither a placeholder nor an escape: \"" + template + "\"")
         );
-        (at, TextOut { _bytes : bytes_out })
+        (at, TextOut { _bytes : bytes_out.truncate(end) })
     );
 }
 
