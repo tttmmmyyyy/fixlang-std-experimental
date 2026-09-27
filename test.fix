@@ -1,6 +1,15 @@
 module Test;
 
-import Std.Experimental;
+import Std::{
+    Array, F32, F64, I64, IO, Option, Result, String, ToString, Array::{from_map, to_iter}, 
+    Debug::assert_eq, F32::{infinity, quiet_nan, to_string_precision}, 
+    F64::{infinity, quiet_nan, to_string_precision}, Iterator::{fold_m, map, range}, Monad::pure, 
+    Option::{none, some}, Result::{err, ok}, String::join, ToString::to_string, ToU8::u8
+};
+import Std.Experimental::{
+    format, left_aligned_to, right_aligned_to, Format, Array::with_separator, F32::with_precision, 
+    F64::with_precision, Format::write_text
+};
 
 test : IO () = (
     test_placeholders;;

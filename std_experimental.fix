@@ -5,6 +5,18 @@
 // `Format` and `FormatArgs` are implemented for tuples of up to 12 elements.
 module Std.Experimental;
 
+import Std::{
+    loop, undefined, Array, Bool, F32, F64, I16, I32, I64, I8, IO, Option, Ptr, Result, String, U16, U32, 
+    U64, U8, 
+    Array::{
+        @, @capacity, @size, _unsafe_grow_size, append, empty, is_empty, mutate_elements, pop_back, 
+        push_back, reserve, resize, set, truncate
+    }, 
+    Iterator::{fold, range}, LessThan::max, LoopState::{break, continue}, Option::{as_some, is_none}, 
+    Ptr::add_offset, Result::{as_err, as_ok, is_ok}, String::{@size, from_U8, get_bytes}, ToI64::i64, 
+    U8::bit_and
+};
+
 // Replaces the placeholders `{}` in a template with values.
 //
 // Each `{}` is replaced with the text of the next value, as `Format` writes it. `{{` and `}}` are

@@ -8,7 +8,13 @@
 //   default.
 module Main;
 
-import EZS;
+import EZS::{cd, cwd, run_o, run_oec, Context::{default, set_eprint_stderr}};
+import Std::{
+    Array, I64, IO, String, Array::{@, @size, to_iter}, 
+    IO::{eprintln, exit, exit_with_msg, get_args, println, read_file_string, write_file_string, IOFail::try}, 
+    Iterator::{fold_m, map, range}, Monad::pure, Option::{as_some, is_none}, 
+    String::{@size, concat_iter, find, get_sub, join, strip_last_newlines}, ToString::to_string
+};
 
 main : IO () = (
     let args = *get_args;
