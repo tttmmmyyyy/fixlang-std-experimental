@@ -12,9 +12,13 @@ import Std::{
         @, @capacity, @size, _unsafe_grow_size, append, empty, is_empty, mutate_elements, pop_back, 
         push_back, reserve, resize, set, truncate
     }, 
-    Iterator::{fold, range}, LessThan::max, LoopState::{break, continue}, Option::{as_some, is_none}, 
-    Ptr::add_offset, Result::{as_err, as_ok, is_ok}, String::{@size, from_U8, get_bytes}, ToI64::i64, 
-    U8::bit_and
+    I64::_sign_and_magnitude, Iterator::{fold, range}, LessThan::max, LoopState::{break, continue}, 
+    Option::{as_some, is_none}, Ptr::add_offset, Result::{as_err, as_ok, is_ok}, 
+    String::{
+        @size, _address_length, _decimal_integer_length, _write_address, _write_decimal_integer, from_U8, 
+        get_bytes
+    }, 
+    ToI64::i64, ToU64::u64, U8::bit_and
 };
 
 namespace String {
@@ -63,7 +67,8 @@ namespace Format::TextOut {
     //
     // `write` receives a pointer to `max_size` bytes at the end of `out`. It writes the text there,
     // followed by a null, and returns the length of the text without the null. The writers of the
-    // Fix runtime, such as `fixruntime_i64_to_str`, work this way when called with `FFI_CALL_IO`.
+    // Fix runtime, such as `fixruntime_f64_to_str_shortest`, work this way when called with
+    // `FFI_CALL_IO`.
     //
     // # Parameters
     // * `max_size` - The number of bytes `write` may write, including the null.
@@ -76,6 +81,43 @@ namespace Format::TextOut {
         let bytes = out._reserve_to_append(max_size)._unsafe_grow_size(size + max_size);
         let (bytes, length) = bytes.mutate_elements(|ptr| write(ptr.add_offset(size)));
         TextOut { _bytes : bytes.truncate(size + length) }
+    );
+
+    // Appends the decimal text of the integer whose sign is `negative` and whose magnitude is
+    // `magnitude`: `-` where `negative` is true, then the digits.
+    //
+    // # Parameters
+    // * `negative` - Whether the integer is below zero.
+    // * `magnitude` - The absolute value of the integer.
+    // * `out` - The text written so far.
+    _write_decimal_integer : Bool -> U64 -> TextOut -> TextOut = |negative, magnitude, out| (
+        let length = String::_decimal_integer_length(negative, magnitude);
+        let end = out.@_bytes.@size + length;
+        // The added bytes are not initialized; `_write_decimal_integer` fills all of them.
+        let bytes = out._reserve_to_append(length)._unsafe_grow_size(end);
+        TextOut { _bytes : bytes._write_decimal_integer(end, negative, magnitude) }
+    );
+
+    // Appends the decimal text of `v`, with `-` before the digits where `v` is below zero.
+    //
+    // # Parameters
+    // * `v` - The integer to write.
+    // * `out` - The text written so far.
+    _write_signed_decimal_integer : I64 -> TextOut -> TextOut = |v, out| (
+        let (negative, magnitude) = v._sign_and_magnitude;
+        out._write_decimal_integer(negative, magnitude)
+    );
+
+    // Appends the address `ptr` holds, as sixteen hexadecimal digits.
+    //
+    // # Parameters
+    // * `ptr` - The pointer whose address is written.
+    // * `out` - The text written so far.
+    _write_address : Ptr -> TextOut -> TextOut = |ptr, out| (
+        let end = out.@_bytes.@size + String::_address_length;
+        // The added bytes are not initialized; `_write_address` fills all of them.
+        let bytes = out._reserve_to_append(String::_address_length)._unsafe_grow_size(end);
+        TextOut { _bytes : bytes._write_address(end - String::_address_length, ptr) }
     );
 
     // Appends `count` spaces. Nothing is appended if `count` is less than 1.
@@ -250,40 +292,40 @@ impl () : Format {
 }
 
 impl U8 : Format {
-    write_text = |v, out| out._write_to_ptr(4, |ptr| FFI_CALL_IO[I64 fixruntime_u8_to_str(Ptr, U8), ptr, v]);
+    write_text = |v, out| out._write_decimal_integer(false, v.u64);
 }
 
 impl I8 : Format {
-    write_text = |v, out| out._write_to_ptr(5, |ptr| FFI_CALL_IO[I64 fixruntime_i8_to_str(Ptr, I8), ptr, v]);
+    write_text = |v, out| out._write_signed_decimal_integer(v.i64);
 }
 
 impl U16 : Format {
-    write_text = |v, out| out._write_to_ptr(6, |ptr| FFI_CALL_IO[I64 fixruntime_u16_to_str(Ptr, U16), ptr, v]);
+    write_text = |v, out| out._write_decimal_integer(false, v.u64);
 }
 
 impl I16 : Format {
-    write_text = |v, out| out._write_to_ptr(7, |ptr| FFI_CALL_IO[I64 fixruntime_i16_to_str(Ptr, I16), ptr, v]);
+    write_text = |v, out| out._write_signed_decimal_integer(v.i64);
 }
 
 impl U32 : Format {
-    write_text = |v, out| out._write_to_ptr(11, |ptr| FFI_CALL_IO[I64 fixruntime_u32_to_str(Ptr, U32), ptr, v]);
+    write_text = |v, out| out._write_decimal_integer(false, v.u64);
 }
 
 impl I32 : Format {
-    write_text = |v, out| out._write_to_ptr(12, |ptr| FFI_CALL_IO[I64 fixruntime_i32_to_str(Ptr, I32), ptr, v]);
+    write_text = |v, out| out._write_signed_decimal_integer(v.i64);
 }
 
 impl U64 : Format {
-    write_text = |v, out| out._write_to_ptr(21, |ptr| FFI_CALL_IO[I64 fixruntime_u64_to_str(Ptr, U64), ptr, v]);
+    write_text = |v, out| out._write_decimal_integer(false, v);
 }
 
 impl I64 : Format {
-    write_text = |v, out| out._write_to_ptr(21, |ptr| FFI_CALL_IO[I64 fixruntime_i64_to_str(Ptr, I64), ptr, v]);
+    write_text = |v, out| out._write_signed_decimal_integer(v);
 }
 
 // Writes sixteen hexadecimal digits, as `to_string` does.
 impl Ptr : Format {
-    write_text = |v, out| out._write_to_ptr(17, |ptr| FFI_CALL_IO[I64 fixruntime_ptr_to_str(Ptr, Ptr), ptr, v]);
+    write_text = |v, out| out._write_address(v);
 }
 
 // Writes the shortest decimal text that reads back as the same number, as `to_string` does.
