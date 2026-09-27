@@ -69,10 +69,12 @@ namespace TextOut {
         TextOut { _bytes : out._bytes_with_room_for(count).resize(size + count, ' ') }
     );
 
-    // The bytes of `out`, with capacity for `count` more.
+    // Returns the bytes of `out`, with enough space reserved to append `count` more bytes without
+    // reallocating.
     //
-    // A capacity that grows at least doubles, so a text written a piece at a time is copied a number
-    // of times proportional to its length, as `Array::push_back` and `Array::append` grow an array.
+    // When the space runs short, this reserves at least twice the current capacity, as
+    // `Array::push_back` and `Array::append` do. So writing a long text piece by piece reallocates
+    // only a few times.
     //
     // # Parameters
     // * `count` - The number of bytes to be written.
