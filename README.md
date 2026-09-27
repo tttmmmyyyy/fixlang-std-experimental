@@ -26,7 +26,7 @@ Add the dependency to your project:
 ```toml
 [[dependencies]]
 name = "std-experimental"
-version = "0.1.0"
+version = "0.2.0"
 git = { url = "https://github.com/tttmmmyyyy/fixlang-std-experimental.git" }
 ```
 
