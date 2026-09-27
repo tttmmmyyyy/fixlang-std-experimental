@@ -1,18 +1,20 @@
-// Module `Std.Experimental` holds additions to `Std` whose design is not settled yet. An entity here
-// can change or disappear in any release; one whose design settles moves into `Std`.
+// The module `Std.Experimental` contains additions to `Std` whose design is not settled yet.
+// Anything here may change or be removed in any version. When its design settles, it moves into
+// `Std`.
 //
-// `Format` and `FormatArgs` are implemented for the tuples of up to 12 elements.
+// `Format` and `FormatArgs` are implemented for tuples of up to 12 elements.
 module Std.Experimental;
 
-// Writes values into the placeholders of a template.
+// Replaces the placeholders `{}` in a template with values.
 //
-// Each `{}` in the template is replaced by the text of the next value, as `Format` writes it. `{{`
-// and `}}` are written as `{` and `}`.
+// Each `{}` is replaced with the text of the next value, as `Format` writes it. `{{` and `}}` are
+// written as `{` and `}`.
 //
-// The values are given as a tuple, which may mix types: `(x,)` for one value, `()` for none.
+// Pass the values as a tuple. The values may have different types. Write `(x,)` for one value and
+// `()` for none.
 //
-// If the template holds more or fewer placeholders than there are values, or holds a `{` or `}`
-// that is neither a placeholder nor an escape, this function aborts the program.
+// The program aborts if the number of placeholders differs from the number of values, or if the
+// template has a `{` or `}` that is not part of a placeholder or an escape.
 //
 // # Examples
 //
@@ -23,7 +25,7 @@ module Std.Experimental;
 // ```
 //
 // # Parameters
-// * `values` - The values written into the placeholders, in order.
+// * `values` - The values to write, in order.
 // * `template` - The template.
 format : [args : FormatArgs] args -> String -> String = |values, template| (
     let cursor = TemplateCursor {
@@ -34,37 +36,36 @@ format : [args : FormatArgs] args -> String -> String = |values, template| (
     cursor.write_args(values)._finish
 );
 
-// The text written so far, to which a value's text is added by `Format::write_text`.
+// The text written so far. `Format::write_text` appends the text of a value to it.
 //
-// A `TextOut` only grows at its end, and holds no null byte: each of its bytes is a byte of the text
-// of a value, and no text holds one.
+// Text is only appended at the end. It never contains a null byte, because the text of a value
+// never does.
 type TextOut = struct { _bytes : Array U8 };
 
 namespace TextOut {
-    // Appends to `out` the text that `write` writes to a pointer.
+    // Appends the text that `write` writes to a pointer.
     //
-    // `write` is given a pointer to `max_size` bytes at the end of `out`. It writes the text there,
-    // at most `max_size - 1` bytes followed by a null, and returns the length of the text, the null
-    // left out. A writer of the Fix runtime, such as `fixruntime_i64_to_str`, called by `FFI_CALL_IO`,
-    // is such a function.
+    // `write` receives a pointer to `max_size` bytes at the end of `out`. It writes the text there,
+    // followed by a null, and returns the length of the text without the null. The writers of the
+    // Fix runtime, such as `fixruntime_i64_to_str`, work this way when called with `FFI_CALL_IO`.
     //
     // # Parameters
-    // * `max_size` - The number of bytes `write` may write, the null included.
-    // * `write` - Writes the text to the pointer it is given.
+    // * `max_size` - The number of bytes `write` may write, including the null.
+    // * `write` - Writes the text to the given pointer.
     // * `out` - The text written so far.
     _write_to_ptr : I64 -> (Ptr -> IO I64) -> TextOut -> TextOut = |max_size, write, out| (
         let size = out.@_bytes.@size;
-        // `_unsafe_grow_size` leaves the array unshared, so `write` writes into this array and no
-        // other. The slots it adds are left uninitialized, and `write` fills the ones kept.
+        // `_unsafe_grow_size` copies the array if it is shared, so `write` writes only to this
+        // array. The added bytes are not initialized; `write` fills the ones that are kept.
         let bytes = out._reserve_to_append(max_size)._unsafe_grow_size(size + max_size);
         let (bytes, length) = bytes.mutate_elements(|ptr| write(ptr.add_offset(size)));
         TextOut { _bytes : bytes.truncate(size + length) }
     );
 
-    // Writes `count` spaces at the end of `out`.
+    // Appends `count` spaces. Nothing is appended if `count` is less than 1.
     //
     // # Parameters
-    // * `count` - The number of spaces. A number less than 1 writes nothing.
+    // * `count` - The number of spaces.
     // * `out` - The text written so far.
     _write_spaces : I64 -> TextOut -> TextOut = |count, out| (
         if count <= 0 { out };
@@ -72,15 +73,15 @@ namespace TextOut {
         TextOut { _bytes : out._reserve_to_append(count).resize(size + count, ' ') }
     );
 
-    // Reserves space to append `count` more bytes to the bytes of `out` without reallocating, and
-    // returns the bytes.
+    // Makes room for `count` more bytes at the end of `out`, so that appending them does not
+    // reallocate, and returns the bytes of `out`.
     //
-    // When the space runs short, this reserves at least twice the current capacity, as
-    // `Array::push_back` and `Array::append` do. So writing a long text piece by piece reallocates
-    // only a few times.
+    // If the capacity is too small, it grows to at least twice its current value, as in
+    // `Array::push_back` and `Array::append`. So writing a long text in many small pieces
+    // reallocates only a few times.
     //
     // # Parameters
-    // * `count` - The number of bytes to be written.
+    // * `count` - The number of bytes to be appended.
     // * `out` - The text written so far.
     _reserve_to_append : I64 -> TextOut -> Array U8 = |count, out| (
         let bytes = out.@_bytes;
@@ -89,14 +90,15 @@ namespace TextOut {
         bytes.reserve(max(size, 2 * bytes.@capacity))
     );
 
-    // The number of Unicode code points in the text `out` holds from byte `start` on.
+    // Counts the Unicode code points in the text of `out`, from byte `start` to the end.
     //
     // # Parameters
-    // * `start` - The byte at which the counted text begins. It begins a code point.
+    // * `start` - The byte to start counting from. It must be the first byte of a code point.
     // * `out` - The text written so far.
     _count_code_points_from : I64 -> TextOut -> I64 = |start, out| (
         let bytes = out.@_bytes;
-        // Each code point has one byte that is not a continuation byte `0b10xxxxxx`.
+        // Count the bytes that start a code point: those that are not continuation bytes
+        // `0b10xxxxxx`.
         range(start, bytes.@size).fold(0, |i, count|
             if bytes.@(i).bit_and(0xC0_U8) == 0x80_U8 { count };
             count + 1
@@ -104,12 +106,11 @@ namespace TextOut {
     );
 }
 
-// A type whose values can write their text at the end of a `TextOut`.
+// A type whose values `format` can write.
 //
-// A type that implements `ToString` as well writes the text `to_string` returns.
+// If the type also implements `ToString`, `write_text` must write the same text as `to_string`.
 //
-// An implementation writes its parts by `write_text` in turn. For a type that has `ToString`, one
-// line does:
+// A type that implements `ToString` can implement `Format` in one line:
 //
 // ```
 // impl Point : Format {
@@ -117,7 +118,7 @@ namespace TextOut {
 // }
 // ```
 //
-// Writing the parts directly saves the intermediate string:
+// Writing each part directly is faster, because it creates no intermediate string:
 //
 // ```
 // impl Point : Format {
@@ -125,37 +126,37 @@ namespace TextOut {
 // }
 // ```
 trait a : Format {
-    // Writes the text of `value` at the end of `out`.
+    // Appends the text of `value` to `out`.
     //
     // # Parameters
-    // * `value` - The value whose text is written.
+    // * `value` - The value to write.
     // * `out` - The text written so far.
     write_text : a -> TextOut -> TextOut;
 }
 
-// A sequence of values `format` writes into the placeholders of a template: `()` and the tuples of
-// values whose types implement `Format`.
+// The values that `format` writes into a template: `()`, or a tuple of values whose types
+// implement `Format`.
 trait args : FormatArgs {
-    // Writes each value of `values` into the next placeholder of the template, after the text of the
-    // template in front of that placeholder.
+    // Writes each value into the next placeholder of the template, after the template text before
+    // that placeholder.
     //
     // # Parameters
     // * `values` - The values.
-    // * `cursor` - The template, and how far it has been written.
+    // * `cursor` - The template and how much of it has been written.
     write_args : args -> TemplateCursor -> TemplateCursor;
 }
 
-// A template being written by `format`: the template, the byte up to which it has been written, and
-// the text written so far.
+// A template that `format` is filling in: the template, the position up to which it has been
+// written, and the text written so far.
 type TemplateCursor = struct { _template : String, _at : I64, _out : TextOut };
 
 namespace TemplateCursor {
-    // Writes the text of the template up to the next placeholder, and then the text of `value` in
-    // place of that placeholder.
+    // Writes the template text up to the next placeholder, then the text of `value` in place of the
+    // placeholder.
     //
     // # Parameters
-    // * `value` - The value written into the placeholder.
-    // * `cursor` - The template, and how far it has been written.
+    // * `value` - The value to write in place of the placeholder.
+    // * `cursor` - The template and how much of it has been written.
     _put_next : [a : Format] a -> TemplateCursor -> TemplateCursor = |value, cursor| (
         let TemplateCursor { _template : template, _at : at, _out : out } = cursor;
         let (at, out) = _write_literal(template, at, out);
@@ -165,29 +166,29 @@ namespace TemplateCursor {
         TemplateCursor { _template : template, _at : at + 2, _out : out.write_text(value) }
     );
 
-    // Writes the rest of the template, and returns the text written.
+    // Writes the rest of the template and returns the whole text.
     //
     // # Parameters
-    // * `cursor` - The template, and how far it has been written.
+    // * `cursor` - The template and how much of it has been written.
     _finish : TemplateCursor -> String = |cursor| (
         let TemplateCursor { _template : template, _at : at, _out : out } = cursor;
         let (at, out) = _write_literal(template, at, out);
         if at < template.@size {
             undefined("[Std.Experimental::format] The template has more placeholders than the values: \"" + template + "\"")
         };
-        // The text holds no null byte, as `TextOut` keeps, so the null ends the string.
+        // A `TextOut` contains no null byte, so the string ends at the null added here.
         String { _data : out.@_bytes.push_back('\0') }
     );
 
-    // Writes the text of `template` from byte `at` up to the next placeholder or the end, turning
-    // each escape into the brace it stands for.
+    // Writes the text of `template` from byte `at` up to the next placeholder or the end. Each escape
+    // is written as the brace it stands for.
     //
-    // Returns the byte at which the placeholder begins, or the size of `template` when none is left,
-    // together with the text written.
+    // Returns the position of the placeholder, or the size of `template` if there is none, together
+    // with the text written.
     //
     // # Parameters
     // * `template` - The template.
-    // * `at` - The byte from which the text is written.
+    // * `at` - The byte to start from.
     // * `out` - The text written so far.
     _write_literal : String -> I64 -> TextOut -> (I64, TextOut) = |template, at, out| (
         let bytes = template.get_bytes;
@@ -196,7 +197,7 @@ namespace TemplateCursor {
             if i == size { break $ (i, bytes_out) };
             let c = bytes.@(i);
             if c != '{' && c != '}' { continue $ (i + 1, bytes_out.push_back(c)) };
-            // The byte after a brace exists: at worst it is the null that ends `bytes`.
+            // A brace is always followed by another byte, since `bytes` ends with a null.
             let d = bytes.@(i + 1);
             if c == '{' && d == '}' { break $ (i, bytes_out) };
             if c == d { continue $ (i + 2, bytes_out.push_back(c)) };
@@ -210,7 +211,7 @@ impl () : FormatArgs {
     write_args = |_, cursor| cursor;
 }
 
-// Writes the value like `ToString`: `true` or `false`.
+// Writes `true` or `false`, as `to_string` does.
 impl Bool : Format {
     write_text = |b, out| (
         if b { out.write_text("true") };
@@ -220,13 +221,12 @@ impl Bool : Format {
 
 impl String : Format {
     write_text = |s, out| (
-        // `append` copies the bytes of `s` into `out`, so popping the null afterwards leaves `s` as
-        // it is.
+        // `append` copies the bytes of `s`, so removing the null afterwards does not change `s`.
         TextOut { _bytes : out.@_bytes.append(s.get_bytes).pop_back }
     );
 }
 
-// Writes the value like `ToString`: `()`.
+// Writes `()`, as `to_string` does.
 impl () : Format {
     write_text = |_, out| out.write_text("()");
 }
@@ -263,24 +263,24 @@ impl I64 : Format {
     write_text = |v, out| out._write_to_ptr(21, |ptr| FFI_CALL_IO[I64 fixruntime_i64_to_str(Ptr, I64), ptr, v]);
 }
 
-// Writes the value like `ToString`: sixteen hexadecimal digits.
+// Writes sixteen hexadecimal digits, as `to_string` does.
 impl Ptr : Format {
     write_text = |v, out| out._write_to_ptr(17, |ptr| FFI_CALL_IO[I64 fixruntime_ptr_to_str(Ptr, Ptr), ptr, v]);
 }
 
-// Writes the value like `ToString`: in its shortest round-trip decimal form.
+// Writes the shortest decimal text that reads back as the same number, as `to_string` does.
 impl F32 : Format {
-    // The size is the one `ToString` gives the same C function.
+    // The size is the one `to_string` gives this C function.
     write_text = |v, out| out._write_to_ptr(17, |ptr| FFI_CALL_IO[I64 fixruntime_f32_to_str_shortest(Ptr, I64, F32), ptr, 17, v]);
 }
 
-// Writes the value like `ToString`: in its shortest round-trip decimal form.
+// Writes the shortest decimal text that reads back as the same number, as `to_string` does.
 impl F64 : Format {
-    // The size is the one `ToString` gives the same C function.
+    // The size is the one `to_string` gives this C function.
     write_text = |v, out| out._write_to_ptr(25, |ptr| FFI_CALL_IO[I64 fixruntime_f64_to_str_shortest(Ptr, I64, F64), ptr, 25, v]);
 }
 
-// Writes the value like `ToString`: `some(x)` or `none()`.
+// Writes `some(x)` or `none()`, as `to_string` does.
 impl [a : Format] Option a : Format {
     write_text = |opt, out| (
         if opt.is_none { out.write_text("none()") };
@@ -288,7 +288,7 @@ impl [a : Format] Option a : Format {
     );
 }
 
-// Writes the value like `ToString`: `ok(x)` or `err(e)`.
+// Writes `ok(x)` or `err(e)`, as `to_string` does.
 impl [e : Format, a : Format] Result e a : Format {
     write_text = |res, out| (
         if res.is_ok { out.write_text("ok(").write_text(res.as_ok).write_text(")") };
@@ -296,19 +296,18 @@ impl [e : Format, a : Format] Result e a : Format {
     );
 }
 
-// Writes the value like `ToString`: the elements between `[` and `]`, separated by `, `.
+// Writes the elements between `[` and `]`, separated by `, `, as `to_string` does.
 impl [a : Format] Array a : Format {
     write_text = |arr, out| out.write_text("[").write_text(arr.with_separator(", ")).write_text("]");
 }
 
-// A floating number written with a fixed number of digits after the decimal point.
-//
-// A value is made by `F32::with_precision` or `F64::with_precision`.
+// A floating-point number written with a fixed number of digits after the decimal point. Created by
+// `F32::with_precision` or `F64::with_precision`.
 type WithPrecision a = struct { _precision : U8, _value : a };
 
 namespace F32 {
-    // Makes `v` be written with `precision` digits after the decimal point, like
-    // `F32::to_string_precision`.
+    // Wraps `v` so that `format` writes it with `precision` digits after the decimal point, as
+    // `F32::to_string_precision` does.
     //
     // # Examples
     //
@@ -318,13 +317,13 @@ namespace F32 {
     //
     // # Parameters
     // * `precision` - The number of digits after the decimal point.
-    // * `v` - The floating number.
+    // * `v` - The number.
     with_precision : U8 -> F32 -> WithPrecision F32 = |precision, v| WithPrecision { _precision : precision, _value : v };
 }
 
 namespace F64 {
-    // Makes `v` be written with `precision` digits after the decimal point, like
-    // `F64::to_string_precision`.
+    // Wraps `v` so that `format` writes it with `precision` digits after the decimal point, as
+    // `F64::to_string_precision` does.
     //
     // # Examples
     //
@@ -334,7 +333,7 @@ namespace F64 {
     //
     // # Parameters
     // * `precision` - The number of digits after the decimal point.
-    // * `v` - The floating number.
+    // * `v` - The number.
     with_precision : U8 -> F64 -> WithPrecision F64 = |precision, v| WithPrecision { _precision : precision, _value : v };
 }
 
@@ -342,7 +341,7 @@ impl WithPrecision F32 : Format {
     write_text = |w, out| (
         let precision = w.@_precision;
         let v = w.@_value;
-        // The size is the one `F32::to_string_precision` gives the same C function.
+        // The size is the one `F32::to_string_precision` gives this C function.
         let size = 42 + precision.i64;
         out._write_to_ptr(size, |ptr| FFI_CALL_IO[I64 fixruntime_f32_to_str_precision(Ptr, I64, F32, U8), ptr, size, v, precision])
     );
@@ -352,20 +351,17 @@ impl WithPrecision F64 : Format {
     write_text = |w, out| (
         let precision = w.@_precision;
         let v = w.@_value;
-        // The size is the one `F64::to_string_precision` gives the same C function.
+        // The size is the one `F64::to_string_precision` gives this C function.
         let size = 312 + precision.i64;
         out._write_to_ptr(size, |ptr| FFI_CALL_IO[I64 fixruntime_f64_to_str_precision(Ptr, I64, F64, U8), ptr, size, v, precision])
     );
 }
 
-// The elements of an array written one after another, with a separator between each two.
-//
-// A value is made by `with_separator`.
+// The elements of an array, written with a separator between them. Created by `with_separator`.
 type WithSeparator a = struct { _separator : String, _elements : Array a };
 
 namespace Array {
-    // Makes the elements of `elements` be written one after another, with `separator` between each
-    // two.
+    // Wraps `elements` so that `format` writes them with `separator` between them.
     //
     // # Examples
     //
@@ -374,7 +370,7 @@ namespace Array {
     // ```
     //
     // # Parameters
-    // * `separator` - The text written between each two elements.
+    // * `separator` - The text to write between two elements.
     // * `elements` - The elements.
     with_separator : String -> Array a -> WithSeparator a = |separator, elements| WithSeparator { _separator : separator, _elements : elements };
 }
@@ -390,13 +386,11 @@ impl [a : Format] WithSeparator a : Format {
     );
 }
 
-// A value written with spaces in front of it, up to a width.
-//
-// A value is made by `right_aligned_to`.
+// A value padded with spaces on the left to a width. Created by `right_aligned_to`.
 type RightAligned a = struct { _width : I64, _value : a };
 
-// Makes `value` be written with spaces in front of it, so that the text takes `width` Unicode code
-// points. A text as wide as `width` or wider is written as it is.
+// Wraps `value` so that `format` pads its text with spaces on the left to `width` Unicode code
+// points. A text that already has `width` code points or more is written unchanged.
 //
 // # Examples
 //
@@ -405,8 +399,8 @@ type RightAligned a = struct { _width : I64, _value : a };
 // ```
 //
 // # Parameters
-// * `width` - The number of Unicode code points the text takes at least.
-// * `value` - The value.
+// * `width` - The minimum width, in Unicode code points.
+// * `value` - The value to write.
 right_aligned_to : I64 -> a -> RightAligned a = |width, value| RightAligned { _width : width, _value : value };
 
 impl [a : Format] RightAligned a : Format {
@@ -415,8 +409,8 @@ impl [a : Format] RightAligned a : Format {
         let out = out.write_text(aligned.@_value);
         let padding = aligned.@_width - out._count_code_points_from(start);
         if padding <= 0 { out };
-        // Move the text right by `padding` bytes, from its last byte back, and fill the bytes it
-        // left with spaces.
+        // Move the text `padding` bytes to the right, starting from its last byte, and then fill the
+        // gap with spaces.
         let bytes = out._write_spaces(padding).@_bytes;
         let end = bytes.@size - padding;
         let bytes = loop((end, bytes), |(i, bytes)|
@@ -430,13 +424,11 @@ impl [a : Format] RightAligned a : Format {
     );
 }
 
-// A value written with spaces after it, up to a width.
-//
-// A value is made by `left_aligned_to`.
+// A value padded with spaces on the right to a width. Created by `left_aligned_to`.
 type LeftAligned a = struct { _width : I64, _value : a };
 
-// Makes `value` be written with spaces after it, so that the text takes `width` Unicode code points.
-// A text as wide as `width` or wider is written as it is.
+// Wraps `value` so that `format` pads its text with spaces on the right to `width` Unicode code
+// points. A text that already has `width` code points or more is written unchanged.
 //
 // # Examples
 //
@@ -445,8 +437,8 @@ type LeftAligned a = struct { _width : I64, _value : a };
 // ```
 //
 // # Parameters
-// * `width` - The number of Unicode code points the text takes at least.
-// * `value` - The value.
+// * `width` - The minimum width, in Unicode code points.
+// * `value` - The value to write.
 left_aligned_to : I64 -> a -> LeftAligned a = |width, value| LeftAligned { _width : width, _value : value };
 
 impl [a : Format] LeftAligned a : Format {
@@ -457,7 +449,7 @@ impl [a : Format] LeftAligned a : Format {
     );
 }
 
-// BEGIN tuple implementations, written by `fix run -- gen-tuples` in `tools`.
+// BEGIN tuple implementations. Generated by `fix run -- gen-tuples` in `tools`.
 
 impl [t0 : Format] (t0,) : Format {
     write_text = |(x0,), out| out.write_text("(").write_text(x0).write_text(",)");

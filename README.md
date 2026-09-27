@@ -1,17 +1,17 @@
 # std-experimental
 
-The module `Std.Experimental` for the [Fix programming language](https://github.com/tttmmmyyyy/fixlang): additions to `Std` whose design is not settled yet. An entity here can change or disappear in any version. One whose design settles moves into `Std`.
+The module `Std.Experimental` for the [Fix programming language](https://github.com/tttmmmyyyy/fixlang). It contains additions to `Std` whose design is not settled yet. Anything here may change or be removed in any version. When its design settles, it moves into `Std`.
 
 ## Contents
 
-- `format` writes values of mixed types into the `{}` placeholders of a template. Each value writes its text straight into the result, so `format` builds no string per value.
+- `format` replaces the placeholders `{}` in a template with values, which may have different types. Each value is written directly into the result, so `format` creates no intermediate string for each value.
 
   ```
   "{} + {} = {}".format((1, 2.5, "three"))   // "1 + 2.5 = three"
   ```
 
-- The trait `Format`, which a type implements to be written by `format`.
-- Wrappers that choose how a value is written: `F32::with_precision`, `F64::with_precision`, `Array::with_separator`, `right_aligned_to` and `left_aligned_to`.
+- The trait `Format`. Implement it for a type so that `format` can write its values.
+- Wrappers that change how a value is written: `F32::with_precision`, `F64::with_precision`, `Array::with_separator`, `right_aligned_to` and `left_aligned_to`.
 
   ```
   "[{}]".format((3.14159.with_precision(2_U8).right_aligned_to(6),))   // "[  3.14]"
@@ -41,10 +41,10 @@ main : IO () = println("x = {}".format((42,)));
 
 ## Dependence on the compiler
 
-This library calls functions of the Fix runtime and private values of `Std`, which are not part of the public API. A version of this library therefore works with the Fix versions it is tested with, and a new Fix version can require a new version of this library.
+This library calls functions of the Fix runtime and private values of `Std`, which are not part of the public API. So each version of this library works only with the Fix versions it was tested with. A new Fix version may need a new version of this library.
 
 ## Development
 
 - `fix test` runs the tests.
-- In `tools`, `fix run -- test-aborts` checks that `format` stops the program on a template that does not match its values, and `fix run -- gen-tuples` writes the implementations for tuples into `std_experimental.fix`. Both need `--allow-preliminary-commands` the first time, for the `make` that the dependency `subprocess` runs.
-- `fix docs -m Std.Experimental -o docs` writes the document.
+- In `tools`, `fix run -- test-aborts` checks that `format` aborts the program when the template does not match the values, and `fix run -- gen-tuples` generates the implementations for tuples in `std_experimental.fix`. The first run needs `--allow-preliminary-commands`, because the dependency `subprocess` runs `make` before it is built.
+- `fix docs -m Std.Experimental -o docs` generates the documentation.

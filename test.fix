@@ -13,8 +13,8 @@ test : IO () = (
     pure()
 );
 
-// `format` replaces each `{}` by the next value and each `{{` and `}}` by a brace, at the start, the
-// middle and the end of the template, for no values, one and several.
+// Tests that `format` replaces each `{}` with the next value, and `{{` and `}}` with a brace. The
+// cases put them at the start, in the middle and at the end, with zero, one and many values.
 test_placeholders : IO () = (
     assert_eq(|_|"case 1", "".format(()), "");;
     assert_eq(|_|"case 2", "123".format(()), "123");;
@@ -34,18 +34,18 @@ test_placeholders : IO () = (
     pure()
 );
 
-// Asserts that `format` writes `x` as `to_string` does, alone and after other text.
+// Checks that `format` writes `x` as `to_string` does, alone and after other text.
 //
 // # Parameters
-// * `name` - What the assertion is about, for the message of a failing one.
-// * `x` - The value written.
+// * `name` - The name of the case, shown when the check fails.
+// * `x` - The value to write.
 check_to_string : [a : Format, a : ToString] String -> a -> IO () = |name, x| (
     assert_eq(|_|name + " alone", "{}".format((x,)), x.to_string);;
     assert_eq(|_|name + " after text", "ab{}cd".format((x,)), "ab" + x.to_string + "cd")
 );
 
-// Each type this module implements `Format` for writes the text its `to_string` returns, on the
-// boundary values of each type.
+// Tests that each type with a `Format` implementation in this module writes the same text as
+// `to_string`, including the smallest and largest values of each type.
 test_same_text_as_to_string : IO () = (
     check_to_string("true", true);;
     check_to_string("false", false);;
@@ -83,8 +83,8 @@ test_same_text_as_to_string : IO () = (
     pure()
 );
 
-// `with_precision` writes what `to_string_precision` returns, for `F32` and `F64`, at each precision
-// up to the greatest, on values whose texts are the widest.
+// Tests that `with_precision` writes the same text as `to_string_precision`, for `F32` and `F64`,
+// at every precision, including values with the longest text.
 test_with_precision : IO () = (
     let f32s = [-3.4028235e38_F32, 3.14159_F32, -0.0_F32, 1.0e-10_F32];
     let f64s = [-1.7976931348623157e308, 3.14159, -0.0, 1.0e-300];
@@ -99,23 +99,23 @@ test_with_precision : IO () = (
     ))
 );
 
-// `with_separator` writes the elements with the separator between each two, for no elements, one
-// and several, and for an empty separator.
+// Tests that `with_separator` writes the separator between elements, for zero, one and many
+// elements, and for an empty separator.
 test_with_separator : IO () = (
     assert_eq(|_|"none", "[{}]".format((([] : Array I64).with_separator(", "),)), "[]");;
     assert_eq(|_|"one", "[{}]".format(([1].with_separator(", "),)), "[1]");;
     assert_eq(|_|"several", "[{}]".format(([1, 2, 3].with_separator(" | "),)), "[1 | 2 | 3]");;
     assert_eq(|_|"empty separator", "[{}]".format((["a", "b"].with_separator(""),)), "[ab]");;
-    // Many numbers in a row make the text grow many times.
+    // Many numbers make the text grow many times.
     let many = Array::from_map(10000, |i| i);
     assert_eq(|_|"many", "{}".format((many.with_separator(","),)), many.to_iter.map(to_string).join(","));;
     pure()
 );
 
-// `right_aligned_to` and `left_aligned_to` pad the text of the value to the width in code points: a
-// narrower text is padded, a text as wide or wider is written as it is, a text of multibyte
-// characters is counted by characters, and the value may itself be a wrapper. The value is written
-// after other text, so the padding goes where the value starts.
+// Tests that `right_aligned_to` and `left_aligned_to` pad the text to the width in code points. A
+// shorter text is padded, and a text of the width or longer is unchanged. Multibyte characters count
+// as one each, and the value can be another wrapper. Some cases write other text first, to check
+// that the padding goes where the value starts.
 test_aligned : IO () = (
     assert_eq(|_|"right narrower", "ab[{}]".format((42.right_aligned_to(5),)), "ab[   42]");;
     assert_eq(|_|"right as wide", "[{}]".format((12345.right_aligned_to(5),)), "[12345]");;
@@ -137,8 +137,8 @@ impl Point : Format {
     write_text = |p, out| out.write_text("(").write_text(p.@x).write_text(", ").write_text(p.@y).write_text(")");
 }
 
-// A user type implementing `Format` by writing its parts is written by `format`, also inside a
-// container.
+// Tests that `format` writes a user type that implements `Format` by writing its parts, also inside
+// an array.
 test_user_type : IO () = (
     let p = Point { x : 3, y : 0.5 };
     assert_eq(|_|"alone", "p = {}".format((p,)), "p = (3, 0.5)");;
@@ -148,8 +148,8 @@ test_user_type : IO () = (
 
 type TwoTries = struct { value : I64 };
 
-// Writes the value into `out` twice, keeps the second text, and drops the first, so that `out` is
-// shared when the second write begins.
+// Writes the value to `out` twice, keeps the second result and drops the first. So `out` is shared
+// when the second write starts.
 impl TwoTries : Format {
     write_text = |t, out| (
         let first = out.write_text(t.@value).write_text(" first");
@@ -159,8 +159,8 @@ impl TwoTries : Format {
     );
 }
 
-// A `TextOut` that is shared when a value is written into it is copied first, so each copy holds
-// the text written into it alone.
+// Tests that a shared `TextOut` is copied before a value is written to it, so each copy has only
+// its own text.
 test_shared_out : IO () = (
     assert_eq(|_|"shared", "[{}]".format((TwoTries { value : 42 },)), "[42 second]");;
     assert_eq(|_|"shared float", "[{}]".format(((TwoTries { value : 7 }, 2.5),)), "[(7 second, 2.5)]");;
