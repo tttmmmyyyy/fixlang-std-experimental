@@ -410,7 +410,7 @@ impl WithPrecision F32 : Format {
         let precision = w.@_precision;
         let v = w.@_value;
         // The size is the one `F32::to_string_precision` gives this C function.
-        let size = 42 + precision.i64;
+        let size = 42 + max(precision.i64, 1);
         out._write_to_ptr(size, |ptr| FFI_CALL_IO[I64 fixruntime_f32_to_str_precision(Ptr, I64, F32, U8), ptr, size, v, precision])
     );
 }
@@ -420,7 +420,7 @@ impl WithPrecision F64 : Format {
         let precision = w.@_precision;
         let v = w.@_value;
         // The size is the one `F64::to_string_precision` gives this C function.
-        let size = 312 + precision.i64;
+        let size = 312 + max(precision.i64, 1);
         out._write_to_ptr(size, |ptr| FFI_CALL_IO[I64 fixruntime_f64_to_str_precision(Ptr, I64, F64, U8), ptr, size, v, precision])
     );
 }
