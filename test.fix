@@ -1,14 +1,17 @@
 module Test;
 
 import Std::{
-    Array, F32, F64, I64, IO, Option, Result, String, ToString, Array::{from_map, to_iter}, 
+    Array, F32, F64, I64, IO, Option, Result, String, ToString, 
+    Array::{@, @size, borrow_elements, from_map, to_iter}, String::get_bytes, Iterator::to_array, 
     Debug::assert_eq, F32::{infinity, quiet_nan, to_string_precision}, 
     F64::{infinity, quiet_nan, to_string_precision}, Iterator::{fold_m, map, range}, Monad::pure, 
     Option::{none, some}, Result::{err, ok}, String::join, ToString::to_string, ToU8::u8
 };
 import Std.Experimental::{
-    Format, Array::with_separator, F32::with_precision, F64::with_precision, 
-    Format::{left_aligned_to, right_aligned_to, write_text}, String::format
+    Format, Array::{get_slice, to_slice, with_separator}, F32::with_precision, F64::with_precision, 
+    Format::{left_aligned_to, right_aligned_to, write_text}, 
+    Slice::{@, @array, @begin, @end, @size, get_slice, to_array, to_iter}, 
+    String::{format, from_slice, get_slice, to_slice}
 };
 
 test : IO () = (
@@ -19,6 +22,9 @@ test : IO () = (
     test_aligned;;
     test_user_type;;
     test_shared_out;;
+    test_slice_ranges;;
+    test_slice_reads;;
+    test_slice_of_string;;
     pure()
 );
 
@@ -173,5 +179,57 @@ impl TwoTries : Format {
 test_shared_out : IO () = (
     assert_eq(|_|"shared", "[{}]".format((TwoTries { value : 42 },)), "[42 second]");;
     assert_eq(|_|"shared float", "[{}]".format(((TwoTries { value : 7 }, 2.5),)), "[(7 second, 2.5)]");;
+    pure()
+);
+
+// Tests that a slice covers the elements it is asked for: `get_slice` clamps its bounds as
+// `get_sub` does, and a slice taken of a slice counts from the beginning of the slice.
+test_slice_ranges : IO () = (
+    let array = [10, 11, 12, 13, 14];
+    assert_eq(|_|"whole", array.to_slice.to_array, array);;
+    assert_eq(|_|"inside", array.get_slice(1, 4).to_array, [11, 12, 13]);;
+    assert_eq(|_|"negative begin", array.get_slice(-2, 2).to_array, [10, 11]);;
+    assert_eq(|_|"end past the size", array.get_slice(3, 9).to_array, [13, 14]);;
+    assert_eq(|_|"end before begin", array.get_slice(3, 1).@size, 0);;
+    assert_eq(|_|"begin past the size", array.get_slice(7, 9).@size, 0);;
+    let inner = array.get_slice(1, 4).get_slice(1, 5);
+    assert_eq(|_|"slice of a slice", inner.to_array, [12, 13]);;
+    assert_eq(|_|"slice of a slice: begin", inner.@begin, 2);;
+    assert_eq(|_|"slice of a slice: end", inner.@end, 4);;
+    let before = array.get_slice(1, 4).get_slice(-3, 1);
+    assert_eq(|_|"slice of a slice before its beginning", before.to_array, [11]);;
+    pure()
+);
+
+// Tests the ways of reading a slice: an element by its index in the slice, the size, the elements
+// in order, and the array the slice was taken from.
+test_slice_reads : IO () = (
+    let array = [10, 11, 12, 13, 14];
+    let slice = array.get_slice(2, 5);
+    assert_eq(|_|"first element", slice.@(0), 12);;
+    assert_eq(|_|"last element", slice.@(2), 14);;
+    assert_eq(|_|"size", slice.@size, 3);;
+    assert_eq(|_|"iterator", slice.to_iter.to_array, [12, 13, 14]);;
+    assert_eq(|_|"array", slice.@array, array);;
+    assert_eq(|_|"begin", slice.@begin, 2);;
+    assert_eq(|_|"end", slice.@end, 5);;
+    pure()
+);
+
+// Tests that a string's slice holds its bytes without the null byte that ends them and without a
+// copy, and that `from_slice` makes a string of a slice's bytes, ending before a null byte.
+test_slice_of_string : IO () = (
+    let str = "abc,def";
+    let slice = str.to_slice;
+    assert_eq(|_|"string: size", slice.@size, 7);;
+    assert_eq(|_|"string: last byte", slice.@(6), 'f');;
+    assert_eq(|_|"string: no copy",
+        slice.@array.borrow_elements(|p| p), str.get_bytes.borrow_elements(|p| p));;
+    assert_eq(|_|"string: get_slice", String::from_slice(str.get_slice(4, 7)), "def");;
+    let past = String::from_slice(str.get_slice(4, 20));
+    assert_eq(|_|"string: get_slice past the size", past, "def");;
+    assert_eq(|_|"string: empty", String::from_slice(str.get_slice(2, 2)), "");;
+    let bytes = ['a', 'b', '\0', 'c'];
+    assert_eq(|_|"string: null byte", String::from_slice(bytes.to_slice), "ab");;
     pure()
 );
