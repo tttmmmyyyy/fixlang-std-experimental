@@ -1,6 +1,6 @@
 # Std.Experimental
 
-Defined in std-experimental@0.1.0
+Defined in std-experimental@0.2.1
 
 The module `Std.Experimental` contains additions to `Std` whose design is not settled yet.
 Anything here may change or be removed in any version. When its design settles, it moves into
@@ -11,6 +11,38 @@ Anything here may change or be removed in any version. When its design settles, 
 ## Values
 
 ### namespace Std.Experimental::Array
+
+#### get_slice
+
+Type: `Std::I64 -> Std::I64 -> Std::Array a -> Std.Experimental::Slice a`
+
+The elements of `array` from `begin` up to `end`, as a slice. This is `get_sub` without the
+copy.
+
+`begin` and `end` are clamped to `[0, array.@size]`, as `get_sub` clamps them, and an `end`
+at or before `begin` gives an empty slice.
+
+##### Examples
+
+```
+[1, 2, 3, 4].get_slice(1, 3).to_array   // [2, 3]
+```
+
+##### Parameters
+
+* `begin` - The index of the first element.
+* `end` - The index after the last element.
+* `array` - The array.
+
+#### to_slice
+
+Type: `Std::Array a -> Std.Experimental::Slice a`
+
+The whole of `array` as a slice.
+
+##### Parameters
+
+* `array` - The array.
 
 #### with_separator
 
@@ -136,6 +168,100 @@ that placeholder.
 * `values` - The values.
 * `cursor` - The template and how much of it has been written.
 
+### namespace Std.Experimental::Slice
+
+#### @
+
+Type: `Std::I64 -> Std.Experimental::Slice a -> a`
+
+The element at index `i` of `slice`, counted from the beginning of the slice. The program
+aborts if `i` is outside `[0, slice.@size)`.
+
+##### Parameters
+
+* `i` - The index.
+* `slice` - The slice.
+
+#### @array
+
+Type: `Std.Experimental::Slice a -> Std::Array a`
+
+The array `slice` was taken from, whole.
+
+A slice's elements are those of this array from `@begin` up to `@end`, so a program that
+reads the array directly, handing positions in it to a C function for one, reads the slice
+there.
+
+##### Parameters
+
+* `slice` - The slice.
+
+#### @begin
+
+Type: `Std.Experimental::Slice a -> Std::I64`
+
+The index in `@array` of the first element of `slice`.
+
+##### Parameters
+
+* `slice` - The slice.
+
+#### @end
+
+Type: `Std.Experimental::Slice a -> Std::I64`
+
+The index in `@array` after the last element of `slice`.
+
+##### Parameters
+
+* `slice` - The slice.
+
+#### @size
+
+Type: `Std.Experimental::Slice a -> Std::I64`
+
+The number of elements of `slice`.
+
+##### Parameters
+
+* `slice` - The slice.
+
+#### get_slice
+
+Type: `Std::I64 -> Std::I64 -> Std.Experimental::Slice a -> Std.Experimental::Slice a`
+
+The elements of `slice` from `begin` up to `end`, counted from the beginning of `slice`, as a
+slice of the same array.
+
+`begin` and `end` are clamped to `[0, slice.@size]`, and an `end` at or before `begin` gives
+an empty slice.
+
+##### Parameters
+
+* `begin` - The index of the first element.
+* `end` - The index after the last element.
+* `slice` - The slice.
+
+#### to_array
+
+Type: `Std.Experimental::Slice a -> Std::Array a`
+
+The elements of `slice`, copied into an array of their own.
+
+##### Parameters
+
+* `slice` - The slice.
+
+#### to_iter
+
+Type: `[?it : Std::Iterator, Std::Iterator::Item ?it = a] Std.Experimental::Slice a -> ?it`
+
+The elements of `slice`, in order.
+
+##### Parameters
+
+* `slice` - The slice.
+
 ### namespace Std.Experimental::String
 
 #### format
@@ -166,7 +292,69 @@ template has a `{` or `}` that is not part of a placeholder or an escape.
 * `values` - The values to write, in order.
 * `template` - The template.
 
+#### from_slice
+
+Type: `Std.Experimental::Slice Std::U8 -> Std::String`
+
+A string holding the bytes of `slice`, copied. Where `slice` holds a null byte, the string
+ends before it, since a string holds no null byte.
+
+##### Examples
+
+```
+String::from_slice("abc,def".get_slice(4, 7))   // "def"
+```
+
+##### Parameters
+
+* `slice` - The bytes.
+
+#### get_slice
+
+Type: `Std::I64 -> Std::I64 -> Std::String -> Std.Experimental::Slice Std::U8`
+
+The bytes of `str` from `begin` up to `end`, as a slice. This is `get_sub` without the copy.
+
+`begin` and `end` are clamped to `[0, str.@size]`, and an `end` at or before `begin` gives an
+empty slice.
+
+##### Examples
+
+```
+"abc,def".get_slice(4, 7).@(0)   // 'd'
+```
+
+##### Parameters
+
+* `begin` - The index of the first byte.
+* `end` - The index after the last byte.
+* `str` - The string.
+
+#### to_slice
+
+Type: `Std::String -> Std.Experimental::Slice Std::U8`
+
+The bytes of `str` as a slice, without the null byte that ends them and without a copy.
+
+##### Parameters
+
+* `str` - The string.
+
 ## Types and aliases
+
+### namespace Std.Experimental
+
+#### Slice
+
+Defined as: `type Slice a = unbox struct { ...fields... }`
+
+A stretch of an array, held without copying it: the elements of `_array` from `_begin` up to
+`_end`. A string's bytes are a `Slice U8`.
+
+A slice holds the whole array it was taken from, so the array is shared while the slice lives:
+changing either copies it.
+
+Invariant: `0 <= _begin <= _end <= _array.@size`.
 
 ### namespace Std.Experimental::Format
 
