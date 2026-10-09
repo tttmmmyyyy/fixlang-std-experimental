@@ -17,6 +17,14 @@ The module `Std.Experimental` for the [Fix programming language](https://github.
   "[{}]".format((3.14159.with_precision(2_U8).right_aligned_to(6),))   // "[  3.14]"
   ```
 
+- The type `Slice a`: a stretch of an array, held without copying it. `Array::get_slice` and `String::get_slice` take one where `get_sub` would copy, and a string's bytes are a `Slice U8` without the null byte that ends them.
+
+  ```
+  "abc,def".get_slice(4, 7).@(0)              // 'd'
+  [1, 2, 3, 4].get_slice(1, 3).to_array       // [2, 3]
+  String::from_slice("abc,def".get_slice(4, 7))   // "def"
+  ```
+
 The full list is in [docs/Std.Experimental.md](docs/Std.Experimental.md).
 
 ## Usage
@@ -46,5 +54,5 @@ This library calls functions of the Fix runtime and private values of `Std`, whi
 ## Development
 
 - `fix test` runs the tests.
-- In `tools`, `fix run -- test-aborts` checks that `format` aborts the program when the template does not match the values, and `fix run -- gen-tuples` generates the implementations for tuples in `std_experimental.fix`. The first run needs `--allow-preliminary-commands`, because the dependency `subprocess` runs `make` before it is built.
+- In `tools`, `fix run -- test-aborts` checks that `format` aborts the program when the template does not match the values and that `Slice::@` aborts it for an index outside the slice, and `fix run -- gen-tuples` generates the implementations for tuples in `std_experimental.fix`. The first run needs `--allow-preliminary-commands`, because the dependency `subprocess` runs `make` before it is built.
 - `fix docs -m Std.Experimental -o docs` generates the documentation.

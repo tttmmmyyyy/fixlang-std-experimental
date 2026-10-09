@@ -6,16 +6,18 @@
 module Std.Experimental;
 
 import Std::{
-    loop, undefined, Array, Bool, F32, F64, I16, I32, I64, I8, IO, Option, Ptr, Result, String, U16, U32, 
+    loop, undefined, Array, Bool, F32, F64, I16, I32, I64, I8, IO, Iterator, Option, Ptr, Result, String, U16, U32, 
     U64, U8, 
     Array::{
-        @, @capacity, @size, _unsafe_grow_size, append, empty, is_empty, mutate_elements, pop_back, 
+        @, @capacity, @size, _check_range, _get_sub_size_with_length_and_additional_capacity, 
+        _unsafe_grow_size, append, empty, get_sub, is_empty, mutate_elements, pop_back, 
         push_back, reserve, resize, set, truncate, unsafe_set_bounds_unchecked
     }, 
-    I64::_sign_and_magnitude, Iterator::{fold, range}, LessThan::max, LoopState::{break, continue}, 
+    I64::_sign_and_magnitude, Iterator::{Item, fold, map, range}, LessThan::{max, min}, LoopState::{break, continue}, 
     Option::{as_some, is_none}, Ptr::add_offset, Result::{as_err, as_ok, is_ok}, 
     String::{
-        @size, _address_length, _decimal_integer_length, _write_address, _write_decimal_integer, from_U8, 
+        @size, _address_length, _decimal_integer_length, _unsafe_from_c_str, _write_address, 
+        _write_decimal_integer, from_U8, 
         get_bytes
     }, 
     ToI64::i64, ToU64::u64, U8::bit_and
@@ -622,3 +624,162 @@ impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Form
 }
 
 // END tuple implementations.
+
+// A stretch of an array, held without copying it: the elements of `_array` from `_begin` up to
+// `_end`. A string's bytes are a `Slice U8`.
+//
+// A slice holds the whole array it was taken from, so the array is shared while the slice lives:
+// changing either copies it.
+//
+// Invariant: `0 <= _begin <= _end <= _array.@size`.
+type Slice a = struct { _array : Array a, _begin : I64, _end : I64 };
+
+namespace Array {
+    // The whole of `array` as a slice.
+    //
+    // # Parameters
+    // * `array` - The array.
+    to_slice : Array a -> Slice a = |array| (
+        Slice { _array : array, _begin : 0, _end : array.@size }
+    );
+
+    // The elements of `array` from `begin` up to `end`, as a slice. This is `get_sub` without the
+    // copy.
+    //
+    // `begin` and `end` are clamped to `[0, array.@size]`, as `get_sub` clamps them, and an `end`
+    // at or before `begin` gives an empty slice.
+    //
+    // # Examples
+    //
+    // ```
+    // [1, 2, 3, 4].get_slice(1, 3).to_array   // [2, 3]
+    // ```
+    //
+    // # Parameters
+    // * `begin` - The index of the first element.
+    // * `end` - The index after the last element.
+    // * `array` - The array.
+    get_slice : I64 -> I64 -> Array a -> Slice a = |begin, end, array| (
+        array.to_slice.get_slice(begin, end)
+    );
+}
+
+namespace String {
+    // The bytes of `str` as a slice, without the null byte that ends them and without a copy.
+    //
+    // # Parameters
+    // * `str` - The string.
+    to_slice : String -> Slice U8 = |str| (
+        Slice { _array : str.get_bytes, _begin : 0, _end : str.@size }
+    );
+
+    // The bytes of `str` from `begin` up to `end`, as a slice. This is `get_sub` without the copy.
+    //
+    // `begin` and `end` are clamped to `[0, str.@size]`, and an `end` at or before `begin` gives an
+    // empty slice.
+    //
+    // # Examples
+    //
+    // ```
+    // "abc,def".get_slice(4, 7).@(0)   // 'd'
+    // ```
+    //
+    // # Parameters
+    // * `begin` - The index of the first byte.
+    // * `end` - The index after the last byte.
+    // * `str` - The string.
+    get_slice : I64 -> I64 -> String -> Slice U8 = |begin, end, str| (
+        str.to_slice.get_slice(begin, end)
+    );
+
+    // A string holding the bytes of `slice`, copied. Where `slice` holds a null byte, the string
+    // ends before it, since a string holds no null byte.
+    //
+    // # Examples
+    //
+    // ```
+    // String::from_slice("abc,def".get_slice(4, 7))   // "def"
+    // ```
+    //
+    // # Parameters
+    // * `slice` - The bytes.
+    from_slice : Slice U8 -> String = |slice| (
+        let bytes = slice.@_array._get_sub_size_with_length_and_additional_capacity(
+            slice.@_end, 1, slice.@_begin, slice.@_end
+        );
+        String::_unsafe_from_c_str(bytes.push_back('\0'))
+    );
+}
+
+namespace Slice {
+    // The element at index `i` of `slice`, counted from the beginning of the slice. The program
+    // aborts if `i` is outside `[0, slice.@size)`.
+    //
+    // # Parameters
+    // * `i` - The index.
+    // * `slice` - The slice.
+    @ : I64 -> Slice a -> a = |i, slice| (
+        let i = Array::_check_range(i, slice.@size);
+        slice.@_array.@(slice.@_begin + i)
+    );
+
+    // The number of elements of `slice`.
+    //
+    // # Parameters
+    // * `slice` - The slice.
+    @size : Slice a -> I64 = |slice| slice.@_end - slice.@_begin;
+
+    // The array `slice` was taken from, whole.
+    //
+    // A slice's elements are those of this array from `@begin` up to `@end`, so a program that
+    // reads the array directly, handing positions in it to a C function for one, reads the slice
+    // there.
+    //
+    // # Parameters
+    // * `slice` - The slice.
+    @array : Slice a -> Array a = |slice| slice.@_array;
+
+    // The index in `@array` of the first element of `slice`.
+    //
+    // # Parameters
+    // * `slice` - The slice.
+    @begin : Slice a -> I64 = |slice| slice.@_begin;
+
+    // The index in `@array` after the last element of `slice`.
+    //
+    // # Parameters
+    // * `slice` - The slice.
+    @end : Slice a -> I64 = |slice| slice.@_end;
+
+    // The elements of `slice` from `begin` up to `end`, counted from the beginning of `slice`, as a
+    // slice of the same array.
+    //
+    // `begin` and `end` are clamped to `[0, slice.@size]`, and an `end` at or before `begin` gives
+    // an empty slice.
+    //
+    // # Parameters
+    // * `begin` - The index of the first element.
+    // * `end` - The index after the last element.
+    // * `slice` - The slice.
+    get_slice : I64 -> I64 -> Slice a -> Slice a = |begin, end, slice| (
+        let size = slice.@size;
+        let begin = min(max(begin, 0), size);
+        let end = min(max(end, begin), size);
+        slice.set__begin(slice.@_begin + begin).set__end(slice.@_begin + end)
+    );
+
+    // The elements of `slice`, in order.
+    //
+    // # Parameters
+    // * `slice` - The slice.
+    to_iter : [?it : Iterator, Item ?it = a] Slice a -> ?it = |slice| (
+        let array = slice.@_array;
+        range(slice.@_begin, slice.@_end).map(|i| array.@(i))
+    );
+
+    // The elements of `slice`, copied into an array of their own.
+    //
+    // # Parameters
+    // * `slice` - The slice.
+    to_array : Slice a -> Array a = |slice| slice.@_array.get_sub(slice.@_begin, slice.@_end);
+}
