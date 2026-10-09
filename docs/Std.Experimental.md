@@ -24,8 +24,8 @@ at or before `begin` gives an empty slice.
 
 ##### Examples
 
-```
-[1, 2, 3, 4].get_slice(1, 3).to_array   // [2, 3]
+```fix
+assert_eq(|_|"", [1, 2, 3, 4].get_slice(1, 3).to_array, [2, 3])
 ```
 
 ##### Parameters
@@ -52,8 +52,8 @@ Wraps `elements` so that `format` writes them with `separator` between them.
 
 ##### Examples
 
-```
-"{}".format(([1, 2, 3].with_separator(", "),))   // "1, 2, 3"
+```fix
+assert_eq(|_|"", "{}".format(([1, 2, 3].with_separator(", "),)), "1, 2, 3")
 ```
 
 ##### Parameters
@@ -72,8 +72,8 @@ Wraps `v` so that `format` writes it with `precision` digits after the decimal p
 
 ##### Examples
 
-```
-"{}".format((3.14159_F32.with_precision(2_U8),))   // "3.14"
+```fix
+assert_eq(|_|"", "{}".format((3.14159_F32.with_precision(2_U8),)), "3.14")
 ```
 
 ##### Parameters
@@ -92,8 +92,8 @@ Wraps `v` so that `format` writes it with `precision` digits after the decimal p
 
 ##### Examples
 
-```
-"{}".format((3.14159.with_precision(2_U8),))   // "3.14"
+```fix
+assert_eq(|_|"", "{}".format((3.14159.with_precision(2_U8),)), "3.14")
 ```
 
 ##### Parameters
@@ -112,8 +112,8 @@ points. A text that already has `width` code points or more is written unchanged
 
 ##### Examples
 
-```
-"[{}]".format((42.left_aligned_to(5),))   // "[42   ]"
+```fix
+assert_eq(|_|"", "[{}]".format((42.left_aligned_to(5),)), "[42   ]")
 ```
 
 ##### Parameters
@@ -130,8 +130,8 @@ points. A text that already has `width` code points or more is written unchanged
 
 ##### Examples
 
-```
-"[{}]".format((42.right_aligned_to(5),))   // "[   42]"
+```fix
+assert_eq(|_|"", "[{}]".format((42.right_aligned_to(5),)), "[   42]")
 ```
 
 ##### Parameters
@@ -281,10 +281,10 @@ template has a `{` or `}` that is not part of a placeholder or an escape.
 
 ##### Examples
 
-```
-"{} + {} = {}".format((1, 2.5, "three"))   // "1 + 2.5 = three"
-"x = {}".format((42,))                      // "x = 42"
-"{{{}}}".format((1,))                       // "{1}"
+```fix
+assert_eq(|_|"", "{} + {} = {}".format((1, 2.5, "three")), "1 + 2.5 = three");;
+assert_eq(|_|"", "x = {}".format((42,)), "x = 42");;
+assert_eq(|_|"", "{{{}}}".format((1,)), "{1}")
 ```
 
 ##### Parameters
@@ -301,8 +301,8 @@ ends before it, since a string holds no null byte.
 
 ##### Examples
 
-```
-String::from_slice("abc,def".get_slice(4, 7))   // "def"
+```fix
+assert_eq(|_|"", String::from_slice("abc,def".get_slice(4, 7)), "def")
 ```
 
 ##### Parameters
@@ -320,8 +320,8 @@ empty slice.
 
 ##### Examples
 
-```
-"abc,def".get_slice(4, 7).@(0)   // 'd'
+```fix
+assert_eq(|_|"", "abc,def".get_slice(4, 7).@(0), 'd')
 ```
 
 ##### Parameters
@@ -413,7 +413,7 @@ If the type also implements `ToString`, `write_text` must write the same text as
 
 A type that implements `ToString` can implement `Format` in one line:
 
-```
+```fix
 impl Point : Format {
     write_text = |p, out| out.write_text(p.to_string);
 }
@@ -421,7 +421,7 @@ impl Point : Format {
 
 Writing each part directly is faster, because it creates no intermediate string:
 
-```
+```fix
 impl Point : Format {
     write_text = |p, out| out.write_text("(").write_text(p.@x).write_text(", ").write_text(p.@y).write_text(")");
 }
