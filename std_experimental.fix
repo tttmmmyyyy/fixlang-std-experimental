@@ -37,10 +37,10 @@ namespace String {
     //
     // # Examples
     //
-    // ```
-    // "{} + {} = {}".format((1, 2.5, "three"))   // "1 + 2.5 = three"
-    // "x = {}".format((42,))                      // "x = 42"
-    // "{{{}}}".format((1,))                       // "{1}"
+    // ```fix
+    // assert_eq(|_|"", "{} + {} = {}".format((1, 2.5, "three")), "1 + 2.5 = three");;
+    // assert_eq(|_|"", "x = {}".format((42,)), "x = 42");;
+    // assert_eq(|_|"", "{{{}}}".format((1,)), "{1}")
     // ```
     //
     // # Parameters
@@ -172,18 +172,36 @@ namespace Format::TextOut {
 //
 // A type that implements `ToString` can implement `Format` in one line:
 //
-// ```
+// ```fix
+// # module DocTest;
+// # import Std.Experimental;
+// #
+// # type Point = struct { x : I64, y : I64 };
+// #
+// # impl Point : ToString {
+// #     to_string = |p| "(" + p.@x.to_string + ", " + p.@y.to_string + ")";
+// # }
+// #
 // impl Point : Format {
 //     write_text = |p, out| out.write_text(p.to_string);
 // }
+// #
+// # main : IO () = assert_eq(|_|"", "{}".format((Point { x : 1, y : 2 },)), "(1, 2)");
 // ```
 //
 // Writing each part directly is faster, because it creates no intermediate string:
 //
-// ```
+// ```fix
+// # module DocTest;
+// # import Std.Experimental;
+// #
+// # type Point = struct { x : I64, y : I64 };
+// #
 // impl Point : Format {
 //     write_text = |p, out| out.write_text("(").write_text(p.@x).write_text(", ").write_text(p.@y).write_text(")");
 // }
+// #
+// # main : IO () = assert_eq(|_|"", "{}".format((Point { x : 1, y : 2 },)), "(1, 2)");
 // ```
 trait a : Format {
     // Appends the text of `value` to `out`.
@@ -381,8 +399,8 @@ namespace F32 {
     //
     // # Examples
     //
-    // ```
-    // "{}".format((3.14159_F32.with_precision(2_U8),))   // "3.14"
+    // ```fix
+    // assert_eq(|_|"", "{}".format((3.14159_F32.with_precision(2_U8),)), "3.14")
     // ```
     //
     // # Parameters
@@ -397,8 +415,8 @@ namespace F64 {
     //
     // # Examples
     //
-    // ```
-    // "{}".format((3.14159.with_precision(2_U8),))   // "3.14"
+    // ```fix
+    // assert_eq(|_|"", "{}".format((3.14159.with_precision(2_U8),)), "3.14")
     // ```
     //
     // # Parameters
@@ -437,8 +455,8 @@ namespace Array {
     //
     // # Examples
     //
-    // ```
-    // "{}".format(([1, 2, 3].with_separator(", "),))   // "1, 2, 3"
+    // ```fix
+    // assert_eq(|_|"", "{}".format(([1, 2, 3].with_separator(", "),)), "1, 2, 3")
     // ```
     //
     // # Parameters
@@ -467,8 +485,8 @@ namespace Format {
     //
     // # Examples
     //
-    // ```
-    // "[{}]".format((42.right_aligned_to(5),))   // "[   42]"
+    // ```fix
+    // assert_eq(|_|"", "[{}]".format((42.right_aligned_to(5),)), "[   42]")
     // ```
     //
     // # Parameters
@@ -507,8 +525,8 @@ namespace Format {
     //
     // # Examples
     //
-    // ```
-    // "[{}]".format((42.left_aligned_to(5),))   // "[42   ]"
+    // ```fix
+    // assert_eq(|_|"", "[{}]".format((42.left_aligned_to(5),)), "[42   ]")
     // ```
     //
     // # Parameters
@@ -651,8 +669,8 @@ namespace Array {
     //
     // # Examples
     //
-    // ```
-    // [1, 2, 3, 4].get_slice(1, 3).to_array   // [2, 3]
+    // ```fix
+    // assert_eq(|_|"", [1, 2, 3, 4].get_slice(1, 3).to_array, [2, 3])
     // ```
     //
     // # Parameters
@@ -680,8 +698,8 @@ namespace String {
     //
     // # Examples
     //
-    // ```
-    // "abc,def".get_slice(4, 7).@(0)   // 'd'
+    // ```fix
+    // assert_eq(|_|"", "abc,def".get_slice(4, 7).@(0), 'd')
     // ```
     //
     // # Parameters
@@ -697,8 +715,8 @@ namespace String {
     //
     // # Examples
     //
-    // ```
-    // String::from_slice("abc,def".get_slice(4, 7))   // "def"
+    // ```fix
+    // assert_eq(|_|"", String::from_slice("abc,def".get_slice(4, 7)), "def")
     // ```
     //
     // # Parameters
