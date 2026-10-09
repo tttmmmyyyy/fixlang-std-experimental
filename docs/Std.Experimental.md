@@ -1,6 +1,6 @@
 # Std.Experimental
 
-Defined in std-experimental@0.2.1
+Defined in std-experimental@0.3.0
 
 The module `Std.Experimental` contains additions to `Std` whose design is not settled yet.
 Anything here may change or be removed in any version. When its design settles, it moves into
