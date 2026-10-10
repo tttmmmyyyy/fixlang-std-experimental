@@ -319,7 +319,7 @@ ends before it, since a string holds no null byte.
 ##### Examples
 
 ```fix
-assert_eq(|_|"", String::from_slice("abc,def".get_slice(4, 7)), "def")
+assert_eq(|_|"", from_slice("abc,def".get_slice(4, 7)), "def")
 ```
 
 ##### Parameters
