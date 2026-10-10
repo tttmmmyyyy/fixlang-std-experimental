@@ -3,6 +3,16 @@
 // `Std`.
 //
 // `Format` and `FormatArgs` are implemented for tuples of up to 12 elements.
+//
+// `String::format` fills the placeholders `{}` of a template with values of any types that
+// implement `Format`. A wrapper such as `with_precision` or `right_aligned_to` changes how a value
+// is written, and one wrapper can wrap another:
+//
+// ```fix
+// let name = "pi".left_aligned_to(4);
+// let value = 3.14159.with_precision(2_U8).right_aligned_to(6);
+// assert_eq(|_|"", "{}|{}".format((name, value)), "pi  |  3.14")
+// ```
 module Std.Experimental;
 
 import Std::{
@@ -774,6 +784,13 @@ namespace Slice {
     //
     // `begin` and `end` are clamped to `[0, slice.@size]`, and an `end` at or before `begin` gives
     // an empty slice.
+    //
+    // # Examples
+    //
+    // ```fix
+    // let slice = [1, 2, 3, 4, 5].get_slice(1, 5);   // [2, 3, 4, 5]
+    // assert_eq(|_|"", slice.get_slice(1, 3).to_array, [3, 4])
+    // ```
     //
     // # Parameters
     // * `begin` - The index of the first element.
