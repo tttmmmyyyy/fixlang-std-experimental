@@ -726,7 +726,7 @@ namespace String {
     // # Examples
     //
     // ```fix
-    // assert_eq(|_|"", String::from_slice("abc,def".get_slice(4, 7)), "def")
+    // assert_eq(|_|"", from_slice("abc,def".get_slice(4, 7)), "def")
     // ```
     //
     // # Parameters
