@@ -16,21 +16,23 @@
 module Std.Experimental;
 
 import Std::{
-    loop, undefined, Array, Bool, F32, F64, I16, I32, I64, I8, IO, Iterator, Option, Ptr, Result, String, U16, U32, 
+    loop, undefined, Array, Bool, F32, F64, I16, I32, I64, I8, Iterator, Option, Ptr, Result, String, U16, U32, 
     U64, U8, 
     Array::{
         @, @capacity, @size, _check_range, _get_sub_size_with_length_and_additional_capacity, 
-        _unsafe_grow_size, append, empty, get_sub, is_empty, mutate_elements, pop_back, 
+        _unsafe_grow_size, append, empty, get_sub, is_empty, pop_back, 
         push_back, reserve, resize, set, truncate, unsafe_set_bounds_unchecked
     }, 
+    F32::{_fixed_text_max_length, _shortest_text_max_length, _write_shortest_text}, 
+    F64::{_fixed_text_max_length, _shortest_text_max_length, _write_fixed_text, _write_shortest_text}, 
     I64::_sign_and_magnitude, Iterator::{Item, fold, map, range}, LessThan::{max, min}, LoopState::{break, continue}, 
-    Option::{as_some, is_none}, Ptr::add_offset, Result::{as_err, as_ok, is_ok}, 
+    Option::{as_some, is_none}, Result::{as_err, as_ok, is_ok}, 
     String::{
         @size, _address_length, _decimal_integer_length, _unsafe_from_c_str, _write_address, 
         _write_decimal_integer, from_U8, 
         get_bytes
     }, 
-    ToI64::i64, ToU64::u64, U8::bit_and
+    ToF64::f64, ToI64::i64, ToU64::u64, U8::bit_and
 };
 
 namespace String {
@@ -75,25 +77,26 @@ namespace Format {
 }
 
 namespace Format::TextOut {
-    // Appends the text that `write` writes to a pointer.
-    //
-    // `write` receives a pointer to `max_size` bytes at the end of `out`. It writes the text there,
-    // followed by a null, and returns the length of the text without the null. The writers of the
-    // Fix runtime, such as `fixruntime_f64_to_str_shortest`, work this way when called with
-    // `FFI_CALL_IO`.
+    // Reserves `max_length` bytes at the end of `out` for a writer of `Std` that writes a text from
+    // an index, such as `F64::_write_shortest_text`, and answers with that index and the bytes.
+    // `_finish_write` takes what the writer answers.
     //
     // # Parameters
-    // * `max_size` - The number of bytes `write` may write, including the null.
-    // * `write` - Writes the text to the given pointer.
+    // * `max_length` - The most bytes the writer writes.
     // * `out` - The text written so far.
-    _write_to_ptr : I64 -> (Ptr -> IO I64) -> TextOut -> TextOut = |max_size, write, out| (
+    _reserve_to_write : I64 -> TextOut -> (I64, Array U8) = |max_length, out| (
         let size = out.@_bytes.@size;
-        // `_unsafe_grow_size` copies the array if it is shared, so `write` writes only to this
-        // array. The added bytes are not initialized; `write` fills the ones that are kept.
-        let bytes = out._reserve_to_append(max_size)._unsafe_grow_size(size + max_size);
-        let (bytes, length) = bytes.mutate_elements(|ptr| write(ptr.add_offset(size)));
-        TextOut { _bytes : bytes.truncate(size + length) }
+        // `_unsafe_grow_size` copies the array if it is shared, so the writer writes only to this
+        // array. The added bytes are not initialized; the writer fills the ones that are kept.
+        (size, out._reserve_to_append(max_length)._unsafe_grow_size(size + max_length))
     );
+
+    // Takes the bytes a writer of `Std` wrote into the bytes `_reserve_to_write` reserved, keeping
+    // them up to the index the writer stopped at.
+    //
+    // # Parameters
+    // * `(end, bytes)` - The index the writer stopped at, and the bytes.
+    _finish_write : (I64, Array U8) -> TextOut = |(end, bytes)| TextOut { _bytes : bytes.truncate(end) };
 
     // Appends the decimal text of the integer whose sign is `negative` and whose magnitude is
     // `magnitude`: `-` where `negative` is true, then the digits.
@@ -366,14 +369,18 @@ impl Ptr : Format {
 
 // Writes the shortest decimal text that reads back as the same number, as `to_string` does.
 impl F32 : Format {
-    // The size is the one `to_string` gives this C function.
-    write_text = |v, out| out._write_to_ptr(17, |ptr| FFI_CALL_IO[I64 fixruntime_f32_to_str_shortest(Ptr, I64, F32), ptr, 17, v]);
+    write_text = |v, out| (
+        let (at, bytes) = out._reserve_to_write(F32::_shortest_text_max_length);
+        _finish_write $ bytes.F32::_write_shortest_text(at, v)
+    );
 }
 
 // Writes the shortest decimal text that reads back as the same number, as `to_string` does.
 impl F64 : Format {
-    // The size is the one `to_string` gives this C function.
-    write_text = |v, out| out._write_to_ptr(25, |ptr| FFI_CALL_IO[I64 fixruntime_f64_to_str_shortest(Ptr, I64, F64), ptr, 25, v]);
+    write_text = |v, out| (
+        let (at, bytes) = out._reserve_to_write(F64::_shortest_text_max_length);
+        _finish_write $ bytes.F64::_write_shortest_text(at, v)
+    );
 }
 
 // Writes `some(x)` or `none()`, as `to_string` does.
@@ -439,9 +446,8 @@ impl WithPrecision F32 : Format {
     write_text = |w, out| (
         let precision = w.@_precision;
         let v = w.@_value;
-        // The size is the one `F32::to_string_precision` gives this C function.
-        let size = 42 + precision.i64;
-        out._write_to_ptr(size, |ptr| FFI_CALL_IO[I64 fixruntime_f32_to_str_precision(Ptr, I64, F32, U8), ptr, size, v, precision])
+        let (at, bytes) = out._reserve_to_write(F32::_fixed_text_max_length(precision.i64));
+        _finish_write $ bytes.F64::_write_fixed_text(at, precision.i64, v.f64)
     );
 }
 
@@ -449,9 +455,8 @@ impl WithPrecision F64 : Format {
     write_text = |w, out| (
         let precision = w.@_precision;
         let v = w.@_value;
-        // The size is the one `F64::to_string_precision` gives this C function.
-        let size = 312 + precision.i64;
-        out._write_to_ptr(size, |ptr| FFI_CALL_IO[I64 fixruntime_f64_to_str_precision(Ptr, I64, F64, U8), ptr, size, v, precision])
+        let (at, bytes) = out._reserve_to_write(F64::_fixed_text_max_length(precision.i64));
+        _finish_write $ bytes.F64::_write_fixed_text(at, precision.i64, v)
     );
 }
 
