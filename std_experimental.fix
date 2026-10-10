@@ -23,7 +23,7 @@ import Std::{
         _unsafe_grow_size, append, empty, get_sub, is_empty, pop_back, 
         push_back, reserve, resize, set, truncate, unsafe_set_bounds_unchecked
     }, 
-    F32::{_fixed_text_max_length, _shortest_text_max_length, _write_shortest_text}, 
+    F32::{_fixed_text_max_length, _shortest_text_max_length, _write_fixed_text, _write_shortest_text}, 
     F64::{_fixed_text_max_length, _shortest_text_max_length, _write_fixed_text, _write_shortest_text}, 
     I64::_sign_and_magnitude, Iterator::{Item, fold, map, range}, LessThan::{max, min}, LoopState::{break, continue}, 
     Option::{as_some, is_none}, Result::{as_err, as_ok, is_ok}, 
@@ -32,7 +32,7 @@ import Std::{
         _write_decimal_integer, from_U8, 
         get_bytes
     }, 
-    ToF64::f64, ToI64::i64, ToU64::u64, U8::bit_and
+    ToI64::i64, ToU64::u64, U8::bit_and
 };
 
 namespace String {
@@ -447,7 +447,7 @@ impl WithPrecision F32 : Format {
         let precision = w.@_precision;
         let v = w.@_value;
         let (at, bytes) = out._reserve_to_write(F32::_fixed_text_max_length(precision.i64));
-        _finish_write $ bytes.F64::_write_fixed_text(at, precision.i64, v.f64)
+        _finish_write $ bytes.F32::_write_fixed_text(at, precision.i64, v)
     );
 }
 
