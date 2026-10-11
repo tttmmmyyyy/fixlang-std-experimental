@@ -34,7 +34,7 @@ Add the dependency to your project:
 ```toml
 [[dependencies]]
 name = "std-experimental"
-version = "0.3.0"
+version = "0.3.1"
 git = { url = "https://github.com/tttmmmyyyy/fixlang-std-experimental.git" }
 ```
 
