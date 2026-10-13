@@ -2,8 +2,6 @@
 // Anything here may change or be removed in any version. When its design settles, it moves into
 // `Std`.
 //
-// `Format` and `FormatArgs` are implemented for tuples of up to 12 elements.
-//
 // `String::format` fills the placeholders `{}` of a template with values of any types that
 // implement `Format`. A wrapper such as `with_precision` or `right_aligned_to` changes how a value
 // is written, and one wrapper can wrap another:
@@ -13,26 +11,35 @@
 // let value = 3.14159.with_precision(2_U8).right_aligned_to(6);
 // assert_eq(|_|"", "{}|{}".format((name, value)), "pi  |  3.14")
 // ```
+//
+// `Format` and `FormatArgs` are implemented for tuples of up to 12 elements.
+//
+// `Slice` is a part of an array, and `StringSlice` is a part of a string. Taking one does not copy
+// the elements:
+//
+// ```fix
+// assert_eq(|_|"", [1, 2, 3, 4].get_slice(1, 3).to_array, [2, 3]);;
+// assert_eq(|_|"", "abc,def".get_slice(4, 7).to_string, "def")
+// ```
 module Std.Experimental;
 
 import Std::{
-    loop, undefined, Array, Bool, F32, F64, I16, I32, I64, I8, Iterator, Option, Ptr, Result, String, U16, U32, 
-    U64, U8, 
+    loop, undefined, Array, Bool, Eq, F32, F64, I16, I32, I64, I8, Iterator, Option, Ptr, Result, String, 
+    ToString, U16, U32, U64, U8, 
     Array::{
-        @, @capacity, @size, _check_range, _get_sub_size_with_length_and_additional_capacity, 
-        _unsafe_grow_size, append, empty, get_sub, is_empty, pop_back, 
-        push_back, reserve, resize, set, truncate, unsafe_set_bounds_unchecked
+        @, @capacity, @size, _check_range, _unsafe_copy_range_bounds_unchecked, _unsafe_grow_size, 
+        append, empty, get_sub, pop_back, push_back, reserve, resize, set, truncate, 
+        unsafe_set_bounds_unchecked
     }, 
     F32::{_fixed_text_max_length, _shortest_text_max_length, _write_fixed_text, _write_shortest_text}, 
     F64::{_fixed_text_max_length, _shortest_text_max_length, _write_fixed_text, _write_shortest_text}, 
     I64::_sign_and_magnitude, Iterator::{Item, fold, map, range}, LessThan::{max, min}, LoopState::{break, continue}, 
     Option::{as_some, is_none}, Result::{as_err, as_ok, is_ok}, 
     String::{
-        @size, _address_length, _decimal_integer_length, _unsafe_from_c_str, _write_address, 
-        _write_decimal_integer, from_U8, 
-        get_bytes
+        @size, _address_length, _decimal_integer_length, _write_address, _write_decimal_integer, 
+        from_U8, get_bytes, get_sub, join
     }, 
-    ToI64::i64, ToU64::u64, U8::bit_and
+    ToI64::i64, ToString::to_string, ToU64::u64, U8::bit_and
 };
 
 namespace String {
@@ -70,10 +77,10 @@ namespace String {
 
 namespace Format {
     // The text written so far. `Format::write_text` appends the text of a value to it.
-    //
-    // Text is only appended at the end. It never contains a null byte, because the text of a value
-    // never does.
-    type TextOut = struct { _bytes : Array U8 };
+    type TextOut = struct {
+        // The text. It contains no null byte.
+        _bytes : Array U8
+    };
 }
 
 namespace Format::TextOut {
@@ -461,8 +468,9 @@ impl WithPrecision F64 : Format {
 }
 
 namespace Format {
-    // The elements of an array, written with a separator between them. Created by `with_separator`.
-    type WithSeparator a = struct { _separator : String, _elements : Array a };
+    // The elements of an array or of a slice, written with a separator between them. Created by
+    // `with_separator`.
+    type WithSeparator a = struct { _separator : String, _elements : Slice a };
 }
 
 namespace Array {
@@ -477,16 +485,31 @@ namespace Array {
     // # Parameters
     // * `separator` - The text to write between two elements.
     // * `elements` - The elements.
-    with_separator : String -> Array a -> WithSeparator a = |separator, elements| WithSeparator { _separator : separator, _elements : elements };
+    with_separator : String -> Array a -> WithSeparator a = |separator, elements| WithSeparator { _separator : separator, _elements : elements.to_slice };
+}
+
+namespace Slice {
+    // Wraps `elements` so that `format` writes them with `separator` between them.
+    //
+    // # Examples
+    //
+    // ```fix
+    // assert_eq(|_|"", "{}".format(([1, 2, 3, 4].get_slice(1, 4).with_separator("-"),)), "2-3-4")
+    // ```
+    //
+    // # Parameters
+    // * `separator` - The text to write between two elements.
+    // * `elements` - The elements.
+    with_separator : String -> Slice a -> WithSeparator a = |separator, elements| WithSeparator { _separator : separator, _elements : elements };
 }
 
 impl [a : Format] WithSeparator a : Format {
     write_text = |w, out| (
         let separator = w.@_separator;
-        let elements = w.@_elements;
-        if elements.is_empty { out };
-        range(1, elements.@size).fold(out.write_text(elements.@(0)), |i, out|
-            out.write_text(separator).write_text(elements.@(i))
+        let Slice { _array : array, _begin : begin, _end : end } = w.@_elements;
+        if begin == end { out };
+        range(begin + 1, end).fold(out.write_text(array.@(begin)), |i, out|
+            out.write_text(separator).write_text(array.@(i))
         )
     );
 }
@@ -658,17 +681,27 @@ impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Form
 
 // END tuple implementations.
 
-// A stretch of an array, held without copying it: the elements of `_array` from `_begin` up to
-// `_end`. A string's bytes are a `Slice U8`.
+// A part of an array: the elements from one index up to another. Taking a slice does not copy the
+// elements.
 //
-// A slice holds the whole array it was taken from, so the array is shared while the slice lives:
-// changing either copies it.
+// Create a slice with `Array::to_slice` or `Array::get_slice`. For a part of a string, use
+// `StringSlice`.
 //
-// Invariant: `0 <= _begin <= _end <= _array.@size`.
-type Slice a = struct { _array : Array a, _begin : I64, _end : I64 };
+// `to_string` and `format` write a slice the same way as an array: `[1, 2, 3]`.
+//
+// A slice keeps a reference to the array it was taken from. While the slice exists, modifying that array copies
+// it.
+type Slice a = struct {
+    // The array the slice was taken from.
+    _array : Array a,
+    // The index of the first element. `0 <= _begin <= _end`.
+    _begin : I64,
+    // The index after the last element. `_end <= _array.@size`.
+    _end : I64
+};
 
 namespace Array {
-    // The whole of `array` as a slice.
+    // A slice of all the elements of `array`.
     //
     // # Parameters
     // * `array` - The array.
@@ -676,11 +709,10 @@ namespace Array {
         Slice { _array : array, _begin : 0, _end : array.@size }
     );
 
-    // The elements of `array` from `begin` up to `end`, as a slice. This is `get_sub` without the
-    // copy.
+    // A slice of the elements of `array` from index `begin` up to index `end`. It is like
+    // `get_sub`, but does not copy the elements.
     //
-    // `begin` and `end` are clamped to `[0, array.@size]`, as `get_sub` clamps them, and an `end`
-    // at or before `begin` gives an empty slice.
+    // `begin` and `end` are clamped to `[0, array.@size]`. If `end <= begin`, the slice is empty.
     //
     // # Examples
     //
@@ -698,55 +730,37 @@ namespace Array {
 }
 
 namespace String {
-    // The bytes of `str` as a slice, without the null byte that ends them and without a copy.
+    // A slice of all the bytes of `str`.
     //
     // # Parameters
     // * `str` - The string.
-    to_slice : String -> Slice U8 = |str| (
-        Slice { _array : str.get_bytes, _begin : 0, _end : str.@size }
+    to_slice : String -> StringSlice = |str| (
+        StringSlice { _string : str, _begin : 0, _end : str.@size }
     );
 
-    // The bytes of `str` from `begin` up to `end`, as a slice. This is `get_sub` without the copy.
+    // A slice of the bytes of `str` from index `begin` up to index `end`. It is like `get_sub`, but
+    // does not copy the bytes.
     //
-    // `begin` and `end` are clamped to `[0, str.@size]`, and an `end` at or before `begin` gives an
-    // empty slice.
+    // `begin` and `end` are clamped to `[0, str.@size]`. If `end <= begin`, the slice is empty.
     //
     // # Examples
     //
     // ```fix
-    // assert_eq(|_|"", "abc,def".get_slice(4, 7).@(0), 'd')
+    // assert_eq(|_|"", "abc,def".get_slice(4, 7).to_string, "def")
     // ```
     //
     // # Parameters
     // * `begin` - The index of the first byte.
     // * `end` - The index after the last byte.
     // * `str` - The string.
-    get_slice : I64 -> I64 -> String -> Slice U8 = |begin, end, str| (
+    get_slice : I64 -> I64 -> String -> StringSlice = |begin, end, str| (
         str.to_slice.get_slice(begin, end)
-    );
-
-    // A string holding the bytes of `slice`, copied. Where `slice` holds a null byte, the string
-    // ends before it, since a string holds no null byte.
-    //
-    // # Examples
-    //
-    // ```fix
-    // assert_eq(|_|"", from_slice("abc,def".get_slice(4, 7)), "def")
-    // ```
-    //
-    // # Parameters
-    // * `slice` - The bytes.
-    from_slice : Slice U8 -> String = |slice| (
-        let bytes = slice.@_array._get_sub_size_with_length_and_additional_capacity(
-            slice.@_end, 1, slice.@_begin, slice.@_end
-        );
-        String::_unsafe_from_c_str(bytes.push_back('\0'))
     );
 }
 
 namespace Slice {
-    // The element at index `i` of `slice`, counted from the beginning of the slice. The program
-    // aborts if `i` is outside `[0, slice.@size)`.
+    // The element at index `i` of `slice`. Index 0 is the first element of the slice. The program
+    // aborts if `i` is out of range.
     //
     // # Parameters
     // * `i` - The index.
@@ -762,11 +776,8 @@ namespace Slice {
     // * `slice` - The slice.
     @size : Slice a -> I64 = |slice| slice.@_end - slice.@_begin;
 
-    // The array `slice` was taken from, whole.
-    //
-    // A slice's elements are those of this array from `@begin` up to `@end`, so a program that
-    // reads the array directly, handing positions in it to a C function for one, reads the slice
-    // there.
+    // The whole array that `slice` was taken from. The elements of `slice` are the elements of
+    // this array from index `@begin` up to index `@end`.
     //
     // # Parameters
     // * `slice` - The slice.
@@ -784,11 +795,10 @@ namespace Slice {
     // * `slice` - The slice.
     @end : Slice a -> I64 = |slice| slice.@_end;
 
-    // The elements of `slice` from `begin` up to `end`, counted from the beginning of `slice`, as a
-    // slice of the same array.
+    // A slice of the elements of `slice` from index `begin` up to index `end`. Index 0 is the first
+    // element of `slice`.
     //
-    // `begin` and `end` are clamped to `[0, slice.@size]`, and an `end` at or before `begin` gives
-    // an empty slice.
+    // `begin` and `end` are clamped to `[0, slice.@size]`. If `end <= begin`, the slice is empty.
     //
     // # Examples
     //
@@ -802,13 +812,22 @@ namespace Slice {
     // * `end` - The index after the last element.
     // * `slice` - The slice.
     get_slice : I64 -> I64 -> Slice a -> Slice a = |begin, end, slice| (
-        let size = slice.@size;
-        let begin = min(max(begin, 0), size);
-        let end = min(max(end, begin), size);
+        let (begin, end) = _clamp_range(begin, end, slice.@size);
         slice.set__begin(slice.@_begin + begin).set__end(slice.@_begin + end)
     );
 
-    // The elements of `slice`, in order.
+    // `begin` and `end` clamped to `[0, size]`, with `end` no less than `begin`.
+    //
+    // # Parameters
+    // * `begin` - The index of the first element asked for.
+    // * `end` - The index after the last element asked for.
+    // * `size` - The number of elements there are.
+    _clamp_range : I64 -> I64 -> I64 -> (I64, I64) = |begin, end, size| (
+        let begin = min(max(begin, 0), size);
+        (begin, min(max(end, begin), size))
+    );
+
+    // An iterator over the elements of `slice`.
     //
     // # Parameters
     // * `slice` - The slice.
@@ -817,9 +836,125 @@ namespace Slice {
         range(slice.@_begin, slice.@_end).map(|i| array.@(i))
     );
 
-    // The elements of `slice`, copied into an array of their own.
+    // Copies the elements of `slice` into a new array.
     //
     // # Parameters
     // * `slice` - The slice.
     to_array : Slice a -> Array a = |slice| slice.@_array.get_sub(slice.@_begin, slice.@_end);
+}
+
+// Writes a slice the same way as an array: `[1, 2, 3]`.
+impl [a : ToString] Slice a : ToString {
+    to_string = |slice| "[" + slice.to_iter.map(to_string).join(", ") + "]";
+}
+
+// Writes a slice the same way as an array: `[1, 2, 3]`.
+impl [a : Format] Slice a : Format {
+    write_text = |slice, out| out.write_text("[").write_text(slice.with_separator(", ")).write_text("]");
+}
+
+// Two slices are equal if they have equal elements in the same order.
+impl [a : Eq] Slice a : Eq {
+    eq = |lhs, rhs| (
+        let size = lhs.@size;
+        if size != rhs.@size { false };
+        let (left, right) = (lhs.@_array, rhs.@_array);
+        let (left_begin, right_begin) = (lhs.@_begin, rhs.@_begin);
+        loop(0, |i|
+            if i == size { break $ true };
+            if left.@(left_begin + i) != right.@(right_begin + i) { break $ false };
+            continue $ i + 1
+        )
+    );
+}
+
+// A part of a string: the bytes from one index up to another. Taking a string slice does not copy
+// the bytes.
+//
+// Create a string slice with `String::to_slice` or `String::get_slice`.
+//
+// `to_string` and `format` write a string slice as its text:
+//
+// ```fix
+// let slice = "abc,def".get_slice(4, 7);
+// assert_eq(|_|"", slice.to_string, "def");;
+// assert_eq(|_|"", "[{}]".format((slice.right_aligned_to(5),)), "[  def]")
+// ```
+//
+// A string slice keeps a reference to the string it was taken from.
+type StringSlice = struct {
+    // The string the slice was taken from.
+    _string : String,
+    // The index of the first byte. `0 <= _begin <= _end`.
+    _begin : I64,
+    // The index after the last byte. `_end <= _string.@size`.
+    _end : I64
+};
+
+namespace StringSlice {
+    // The number of bytes of `slice`.
+    //
+    // # Parameters
+    // * `slice` - The string slice.
+    @size : StringSlice -> I64 = |slice| slice.@_end - slice.@_begin;
+
+    // A slice of the bytes of `slice` from index `begin` up to index `end`. Index 0 is the first
+    // byte of `slice`.
+    //
+    // `begin` and `end` are clamped to `[0, slice.@size]`. If `end <= begin`, the slice is empty.
+    //
+    // # Examples
+    //
+    // ```fix
+    // let slice = "abc,def".get_slice(4, 7);   // def
+    // assert_eq(|_|"", slice.get_slice(1, 3).to_string, "ef")
+    // ```
+    //
+    // # Parameters
+    // * `begin` - The index of the first byte.
+    // * `end` - The index after the last byte.
+    // * `slice` - The string slice.
+    get_slice : I64 -> I64 -> StringSlice -> StringSlice = |begin, end, slice| (
+        let (begin, end) = Slice::_clamp_range(begin, end, slice.@size);
+        slice.set__begin(slice.@_begin + begin).set__end(slice.@_begin + end)
+    );
+
+    // The bytes of `slice` as a `Slice U8`. It does not copy the bytes.
+    //
+    // # Examples
+    //
+    // ```fix
+    // assert_eq(|_|"", "abc,def".get_slice(4, 7).get_bytes.to_array, ['d', 'e', 'f'])
+    // ```
+    //
+    // # Parameters
+    // * `slice` - The string slice.
+    get_bytes : StringSlice -> Slice U8 = |slice| (
+        Slice { _array : slice.@_string.get_bytes, _begin : slice.@_begin, _end : slice.@_end }
+    );
+}
+
+// Returns the text of the slice as a string.
+impl StringSlice : ToString {
+    to_string = |slice| (
+        let string = slice.@_string;
+        if slice.@_begin == 0 && slice.@_end == string.@size { string };
+        string.get_sub(slice.@_begin, slice.@_end)
+    );
+}
+
+// Writes the text of the slice.
+impl StringSlice : Format {
+    write_text = |slice, out| (
+        let (begin, end) = (slice.@_begin, slice.@_end);
+        let size = out.@_bytes.@size;
+        // The added bytes are not initialized; the copy fills all of them.
+        let bytes = out._reserve_to_append(end - begin)._unsafe_grow_size(size + end - begin);
+        TextOut { _bytes : bytes._unsafe_copy_range_bounds_unchecked(slice.@_string.get_bytes, begin, end, size) }
+    );
+}
+
+// Two string slices are equal if they have the same bytes.
+impl StringSlice : Eq {
+    eq = |lhs, rhs| lhs.get_bytes == rhs.get_bytes;
 }

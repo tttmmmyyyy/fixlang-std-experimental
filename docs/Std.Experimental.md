@@ -1,12 +1,10 @@
 # Std.Experimental
 
-Defined in std-experimental@0.3.1
+Defined in std-experimental@0.4.0
 
 The module `Std.Experimental` contains additions to `Std` whose design is not settled yet.
 Anything here may change or be removed in any version. When its design settles, it moves into
 `Std`.
-
-`Format` and `FormatArgs` are implemented for tuples of up to 12 elements.
 
 `String::format` fills the placeholders `{}` of a template with values of any types that
 implement `Format`. A wrapper such as `with_precision` or `right_aligned_to` changes how a value
@@ -18,6 +16,16 @@ let value = 3.14159.with_precision(2_U8).right_aligned_to(6);
 assert_eq(|_|"", "{}|{}".format((name, value)), "pi  |  3.14")
 ```
 
+`Format` and `FormatArgs` are implemented for tuples of up to 12 elements.
+
+`Slice` is a part of an array, and `StringSlice` is a part of a string. Taking one does not copy
+the elements:
+
+```fix
+assert_eq(|_|"", [1, 2, 3, 4].get_slice(1, 3).to_array, [2, 3]);;
+assert_eq(|_|"", "abc,def".get_slice(4, 7).to_string, "def")
+```
+
 ## Values
 
 ### namespace Std.Experimental::Array
@@ -26,11 +34,10 @@ assert_eq(|_|"", "{}|{}".format((name, value)), "pi  |  3.14")
 
 Type: `Std::I64 -> Std::I64 -> Std::Array a -> Std.Experimental::Slice a`
 
-The elements of `array` from `begin` up to `end`, as a slice. This is `get_sub` without the
-copy.
+A slice of the elements of `array` from index `begin` up to index `end`. It is like
+`get_sub`, but does not copy the elements.
 
-`begin` and `end` are clamped to `[0, array.@size]`, as `get_sub` clamps them, and an `end`
-at or before `begin` gives an empty slice.
+`begin` and `end` are clamped to `[0, array.@size]`. If `end <= begin`, the slice is empty.
 
 ##### Examples
 
@@ -48,7 +55,7 @@ assert_eq(|_|"", [1, 2, 3, 4].get_slice(1, 3).to_array, [2, 3])
 
 Type: `Std::Array a -> Std.Experimental::Slice a`
 
-The whole of `array` as a slice.
+A slice of all the elements of `array`.
 
 ##### Parameters
 
@@ -184,8 +191,8 @@ that placeholder.
 
 Type: `Std::I64 -> Std.Experimental::Slice a -> a`
 
-The element at index `i` of `slice`, counted from the beginning of the slice. The program
-aborts if `i` is outside `[0, slice.@size)`.
+The element at index `i` of `slice`. Index 0 is the first element of the slice. The program
+aborts if `i` is out of range.
 
 ##### Parameters
 
@@ -196,11 +203,8 @@ aborts if `i` is outside `[0, slice.@size)`.
 
 Type: `Std.Experimental::Slice a -> Std::Array a`
 
-The array `slice` was taken from, whole.
-
-A slice's elements are those of this array from `@begin` up to `@end`, so a program that
-reads the array directly, handing positions in it to a C function for one, reads the slice
-there.
+The whole array that `slice` was taken from. The elements of `slice` are the elements of
+this array from index `@begin` up to index `@end`.
 
 ##### Parameters
 
@@ -240,11 +244,10 @@ The number of elements of `slice`.
 
 Type: `Std::I64 -> Std::I64 -> Std.Experimental::Slice a -> Std.Experimental::Slice a`
 
-The elements of `slice` from `begin` up to `end`, counted from the beginning of `slice`, as a
-slice of the same array.
+A slice of the elements of `slice` from index `begin` up to index `end`. Index 0 is the first
+element of `slice`.
 
-`begin` and `end` are clamped to `[0, slice.@size]`, and an `end` at or before `begin` gives
-an empty slice.
+`begin` and `end` are clamped to `[0, slice.@size]`. If `end <= begin`, the slice is empty.
 
 ##### Examples
 
@@ -263,7 +266,7 @@ assert_eq(|_|"", slice.get_slice(1, 3).to_array, [3, 4])
 
 Type: `Std.Experimental::Slice a -> Std::Array a`
 
-The elements of `slice`, copied into an array of their own.
+Copies the elements of `slice` into a new array.
 
 ##### Parameters
 
@@ -273,11 +276,28 @@ The elements of `slice`, copied into an array of their own.
 
 Type: `[?it : Std::Iterator, Std::Iterator::Item ?it = a] Std.Experimental::Slice a -> ?it`
 
-The elements of `slice`, in order.
+An iterator over the elements of `slice`.
 
 ##### Parameters
 
 * `slice` - The slice.
+
+#### with_separator
+
+Type: `Std::String -> Std.Experimental::Slice a -> Std.Experimental::Format::WithSeparator a`
+
+Wraps `elements` so that `format` writes them with `separator` between them.
+
+##### Examples
+
+```fix
+assert_eq(|_|"", "{}".format(([1, 2, 3, 4].get_slice(1, 4).with_separator("-"),)), "2-3-4")
+```
+
+##### Parameters
+
+* `separator` - The text to write between two elements.
+* `elements` - The elements.
 
 ### namespace Std.Experimental::String
 
@@ -309,36 +329,19 @@ assert_eq(|_|"", "{{{}}}".format((1,)), "{1}")
 * `values` - The values to write, in order.
 * `template` - The template.
 
-#### from_slice
-
-Type: `Std.Experimental::Slice Std::U8 -> Std::String`
-
-A string holding the bytes of `slice`, copied. Where `slice` holds a null byte, the string
-ends before it, since a string holds no null byte.
-
-##### Examples
-
-```fix
-assert_eq(|_|"", from_slice("abc,def".get_slice(4, 7)), "def")
-```
-
-##### Parameters
-
-* `slice` - The bytes.
-
 #### get_slice
 
-Type: `Std::I64 -> Std::I64 -> Std::String -> Std.Experimental::Slice Std::U8`
+Type: `Std::I64 -> Std::I64 -> Std::String -> Std.Experimental::StringSlice`
 
-The bytes of `str` from `begin` up to `end`, as a slice. This is `get_sub` without the copy.
+A slice of the bytes of `str` from index `begin` up to index `end`. It is like `get_sub`, but
+does not copy the bytes.
 
-`begin` and `end` are clamped to `[0, str.@size]`, and an `end` at or before `begin` gives an
-empty slice.
+`begin` and `end` are clamped to `[0, str.@size]`. If `end <= begin`, the slice is empty.
 
 ##### Examples
 
 ```fix
-assert_eq(|_|"", "abc,def".get_slice(4, 7).@(0), 'd')
+assert_eq(|_|"", "abc,def".get_slice(4, 7).to_string, "def")
 ```
 
 ##### Parameters
@@ -349,13 +352,63 @@ assert_eq(|_|"", "abc,def".get_slice(4, 7).@(0), 'd')
 
 #### to_slice
 
-Type: `Std::String -> Std.Experimental::Slice Std::U8`
+Type: `Std::String -> Std.Experimental::StringSlice`
 
-The bytes of `str` as a slice, without the null byte that ends them and without a copy.
+A slice of all the bytes of `str`.
 
 ##### Parameters
 
 * `str` - The string.
+
+### namespace Std.Experimental::StringSlice
+
+#### @size
+
+Type: `Std.Experimental::StringSlice -> Std::I64`
+
+The number of bytes of `slice`.
+
+##### Parameters
+
+* `slice` - The string slice.
+
+#### get_bytes
+
+Type: `Std.Experimental::StringSlice -> Std.Experimental::Slice Std::U8`
+
+The bytes of `slice` as a `Slice U8`. It does not copy the bytes.
+
+##### Examples
+
+```fix
+assert_eq(|_|"", "abc,def".get_slice(4, 7).get_bytes.to_array, ['d', 'e', 'f'])
+```
+
+##### Parameters
+
+* `slice` - The string slice.
+
+#### get_slice
+
+Type: `Std::I64 -> Std::I64 -> Std.Experimental::StringSlice -> Std.Experimental::StringSlice`
+
+A slice of the bytes of `slice` from index `begin` up to index `end`. Index 0 is the first
+byte of `slice`.
+
+`begin` and `end` are clamped to `[0, slice.@size]`. If `end <= begin`, the slice is empty.
+
+##### Examples
+
+```fix
+let slice = "abc,def".get_slice(4, 7);   // def
+assert_eq(|_|"", slice.get_slice(1, 3).to_string, "ef")
+```
+
+##### Parameters
+
+* `begin` - The index of the first byte.
+* `end` - The index after the last byte.
+* `slice` - The string slice.
 
 ## Types and aliases
 
@@ -365,13 +418,35 @@ The bytes of `str` as a slice, without the null byte that ends them and without 
 
 Defined as: `type Slice a = unbox struct { ...fields... }`
 
-A stretch of an array, held without copying it: the elements of `_array` from `_begin` up to
-`_end`. A string's bytes are a `Slice U8`.
+A part of an array: the elements from one index up to another. Taking a slice does not copy the
+elements.
 
-A slice holds the whole array it was taken from, so the array is shared while the slice lives:
-changing either copies it.
+Create a slice with `Array::to_slice` or `Array::get_slice`. For a part of a string, use
+`StringSlice`.
 
-Invariant: `0 <= _begin <= _end <= _array.@size`.
+`to_string` and `format` write a slice the same way as an array: `[1, 2, 3]`.
+
+A slice keeps a reference to the array it was taken from. While the slice exists, modifying that array copies
+it.
+
+#### StringSlice
+
+Defined as: `type StringSlice = unbox struct { ...fields... }`
+
+A part of a string: the bytes from one index up to another. Taking a string slice does not copy
+the bytes.
+
+Create a string slice with `String::to_slice` or `String::get_slice`.
+
+`to_string` and `format` write a string slice as its text:
+
+```fix
+let slice = "abc,def".get_slice(4, 7);
+assert_eq(|_|"", slice.to_string, "def");;
+assert_eq(|_|"", "[{}]".format((slice.right_aligned_to(5),)), "[  def]")
+```
+
+A string slice keeps a reference to the string it was taken from.
 
 ### namespace Std.Experimental::Format
 
@@ -393,9 +468,6 @@ Defined as: `type TextOut = unbox struct { ...fields... }`
 
 The text written so far. `Format::write_text` appends the text of a value to it.
 
-Text is only appended at the end. It never contains a null byte, because the text of a value
-never does.
-
 #### WithPrecision
 
 Defined as: `type WithPrecision a = unbox struct { ...fields... }`
@@ -407,7 +479,8 @@ A floating-point number written with a fixed number of digits after the decimal 
 
 Defined as: `type WithSeparator a = unbox struct { ...fields... }`
 
-The elements of an array, written with a separator between them. Created by `with_separator`.
+The elements of an array or of a slice, written with a separator between them. Created by
+`with_separator`.
 
 ### namespace Std.Experimental::FormatArgs
 
@@ -537,6 +610,30 @@ Writes `()`, as `to_string` does.
 ### impl `Std.Experimental::Format::WithPrecision Std::F64 : Std.Experimental::Format`
 
 ### impl `[a : Std.Experimental::Format] Std.Experimental::Format::WithSeparator a : Std.Experimental::Format`
+
+### impl `[a : Std.Experimental::Format] Std.Experimental::Slice a : Std.Experimental::Format`
+
+Writes a slice the same way as an array: `[1, 2, 3]`.
+
+### impl `[a : Std::Eq] Std.Experimental::Slice a : Std::Eq`
+
+Two slices are equal if they have equal elements in the same order.
+
+### impl `[a : Std::ToString] Std.Experimental::Slice a : Std::ToString`
+
+Writes a slice the same way as an array: `[1, 2, 3]`.
+
+### impl `Std.Experimental::StringSlice : Std.Experimental::Format`
+
+Writes the text of the slice.
+
+### impl `Std.Experimental::StringSlice : Std::Eq`
+
+Two string slices are equal if they have the same bytes.
+
+### impl `Std.Experimental::StringSlice : Std::ToString`
+
+Returns the text of the slice as a string.
 
 ### impl `[a : Std.Experimental::Format] Std::Array a : Std.Experimental::Format`
 
