@@ -11,4 +11,4 @@
 ### Changed
 
 - #10: `String::to_slice` and `String::get_slice` now return a `StringSlice`, where they returned a `Slice U8`. For the bytes, write `str.get_slice(begin, end).get_bytes`.
-- #10: `String::from_slice` is removed. Write `slice.to_string` for a `StringSlice`. For a `Slice U8` taken of an array of bytes, write `from_bytes(slice.to_array.push_back('\0'))`; `to_string` of a `Slice U8` writes it as an array, `[97, 98]`.
+- #10: `String::from_slice` is removed. Write `slice.to_string` for a `StringSlice`. For a `Slice U8` taken of an array of bytes, write `from_bytes(slice.to_array.push_back('\0'))`, which is a `Result ErrMsg String`; `to_string` of a `Slice U8` writes it as an array, `[97, 98]`.
