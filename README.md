@@ -17,7 +17,7 @@ The module `Std.Experimental` for the [Fix programming language](https://github.
   "[{}]".format((3.14159.with_precision(2_U8).right_aligned_to(6),))   // "[  3.14]"
   ```
 
-- The types `Slice a` and `StringSlice`: a stretch of an array and a stretch of a string, held without copying it. `Array::get_slice` and `String::get_slice` take one where `get_sub` would copy. `to_string` and `format` write a `Slice a` as an array, and a `StringSlice` as the text it holds.
+- The types `Slice a` and `StringSlice`: a part of an array and a part of a string. `Array::get_slice` and `String::get_slice` take one without copying the elements, where `get_sub` copies them. `to_string` and `format` write a `Slice a` the same way as an array, and a `StringSlice` as its text.
 
   ```
   [1, 2, 3, 4].get_slice(1, 3).to_array        // [2, 3]

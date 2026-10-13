@@ -4,7 +4,7 @@
 
 ### Added
 
-- #10: The type `StringSlice`: a stretch of a string, held without copying it. `to_string` gives the text it holds, `format` writes that text with no intermediate string, and `==` compares the bytes. `StringSlice::get_bytes` gives its bytes as a `Slice U8`.
+- #10: The type `StringSlice`: a part of a string, taken without copying the bytes. `to_string` gives its text, `format` writes that text with no intermediate string, and `==` compares the bytes. `StringSlice::get_bytes` gives its bytes as a `Slice U8`.
 - #10: `Slice a` now implements `ToString`, `Format` and `Eq`. `to_string` and `format` write a slice as an array is written, `[1, 2, 3]`.
 - #10: `Slice::with_separator` writes the elements of a slice with a separator between them, as `Array::with_separator` does for an array.
 
