@@ -4,14 +4,14 @@ import Std::{
     Array, F32, F64, I64, IO, Option, Result, String, ToString, 
     Array::{@, @size, borrow_elements, from_map, to_iter}, String::get_bytes, Iterator::to_array, 
     Debug::assert_eq, F32::{infinity, quiet_nan, to_string_precision}, 
-    F64::{infinity, quiet_nan, to_string_precision}, Iterator::{fold_m, map, range}, Monad::pure, 
-    Option::{none, some}, Result::{err, ok}, String::join, ToString::to_string, ToU8::u8
+    F64::{infinity, quiet_nan, to_string_precision}, Iterator::{fold, fold_m, map, range}, Monad::pure, 
+    Option::{none, some}, Result::{err, ok}, String::{get_sub, join}, ToString::to_string, ToU8::u8
 };
 import Std.Experimental::{
     Format, Array::{get_slice, to_slice, with_separator}, F32::with_precision, F64::with_precision, 
     Format::{left_aligned_to, right_aligned_to, write_text}, 
-    Slice::{@, @array, @begin, @end, @size, get_slice, to_array, to_iter}, 
-    String::{format, from_slice, get_slice, to_slice}
+    Slice::{@, @array, @begin, @end, @size, get_slice, to_array, to_iter, with_separator}, 
+    String::{format, get_slice, to_slice}, StringSlice::{@size, get_bytes, get_slice}
 };
 
 test : IO () = (
@@ -24,7 +24,9 @@ test : IO () = (
     test_shared_out;;
     test_slice_ranges;;
     test_slice_reads;;
-    test_slice_of_string;;
+    test_slice_traits;;
+    test_string_slice;;
+    test_string_slice_traits;;
     pure()
 );
 
@@ -91,6 +93,12 @@ test_same_text_as_to_string : IO () = (
     check_to_string("empty array", [] : Array I64);;
     check_to_string("array", [1, 2, 3]);;
     check_to_string("nested", [Option::some((1, "a")), Option::none()]);;
+    check_to_string("empty slice", [1, 2, 3].get_slice(1, 1));;
+    check_to_string("slice", [1, 2, 3, 4].get_slice(1, 3));;
+    check_to_string("slice of bytes", "abc".get_slice(0, 2).get_bytes);;
+    check_to_string("empty string slice", "Hello, 世界".get_slice(3, 3));;
+    check_to_string("string slice", "Hello, 世界".get_slice(4, 10));;
+    check_to_string("whole string slice", "Hello, 世界".to_slice);;
     check_to_string("tuple 1", (7,));;
     check_to_string("tuple 2", (1, "a"));;
     check_to_string("tuple 5", (1, 2.5, "c", true, [()]));;
@@ -161,11 +169,11 @@ test_user_type : IO () = (
     pure()
 );
 
-type TwoTries = struct { value : I64 };
+type TwoTries a = struct { value : a };
 
 // Writes the value to `out` twice, keeps the second result and drops the first. So `out` is shared
 // when the second write starts.
-impl TwoTries : Format {
+impl [a : Format] TwoTries a : Format {
     write_text = |t, out| (
         let first = out.write_text(t.@value).write_text(" first");
         let second = out.write_text(t.@value).write_text(" second");
@@ -179,6 +187,8 @@ impl TwoTries : Format {
 test_shared_out : IO () = (
     assert_eq(|_|"shared", "[{}]".format((TwoTries { value : 42 },)), "[42 second]");;
     assert_eq(|_|"shared float", "[{}]".format(((TwoTries { value : 7 }, 2.5),)), "[(7 second, 2.5)]");;
+    let slice = "abc,def".get_slice(4, 7);
+    assert_eq(|_|"shared string slice", "[{}]".format((TwoTries { value : slice },)), "[def second]");;
     pure()
 );
 
@@ -216,20 +226,77 @@ test_slice_reads : IO () = (
     pure()
 );
 
-// Tests that a string's slice holds its bytes without the null byte that ends them and without a
-// copy, and that `from_slice` makes a string of a slice's bytes, ending before a null byte.
-test_slice_of_string : IO () = (
+// Tests that a slice is written as an array is, by `to_string` and by `format`, with and without
+// a separator of its own, and that two slices are equal when their elements are, wherever in their
+// arrays they stand.
+test_slice_traits : IO () = (
+    let array = [10, 11, 12, 13, 14];
+    let slice = array.get_slice(1, 4);
+    assert_eq(|_|"to_string", slice.to_string, "[11, 12, 13]");;
+    assert_eq(|_|"to_string: empty", array.get_slice(2, 2).to_string, "[]");;
+    assert_eq(|_|"format", "{}".format((slice,)), "[11, 12, 13]");;
+    assert_eq(|_|"format: empty", "{}".format((array.get_slice(2, 2),)), "[]");;
+    assert_eq(|_|"format: one", "{}".format((array.get_slice(4, 5),)), "[14]");;
+    assert_eq(|_|"with_separator", "{}".format((slice.with_separator("-"),)), "11-12-13");;
+    let none = array.get_slice(2, 2);
+    assert_eq(|_|"with_separator: empty", "<{}>".format((none.with_separator("-"),)), "<>");;
+    let last = array.get_slice(4, 5);
+    assert_eq(|_|"aligned", "[{}]".format((last.right_aligned_to(6),)), "[  [14]]");;
+    assert_eq(|_|"equal", slice, [0, 11, 12, 13].get_slice(1, 4));;
+    assert_eq(|_|"equal: another beginning", slice, [0, 0, 0, 11, 12, 13, 0].get_slice(3, 6));;
+    assert_eq(|_|"equal: whole", [11, 12, 13].to_slice, slice);;
+    assert_eq(|_|"equal: different element", slice == [11, 12, 14].to_slice, false);;
+    assert_eq(|_|"equal: different size", slice == array.get_slice(1, 3), false);;
+    assert_eq(|_|"equal: empty", array.get_slice(0, 0), array.get_slice(5, 5));;
+    pure()
+);
+
+// Tests that a string's slice covers the bytes it is asked for, without the null byte that ends
+// the string and without a copy: `get_slice` clamps its bounds as `get_sub` does, and a slice
+// taken of a slice counts from the beginning of the slice.
+test_string_slice : IO () = (
     let str = "abc,def";
     let slice = str.to_slice;
-    assert_eq(|_|"string: size", slice.@size, 7);;
-    assert_eq(|_|"string: last byte", slice.@(6), 'f');;
-    assert_eq(|_|"string: no copy",
-        slice.@array.borrow_elements(|p| p), str.get_bytes.borrow_elements(|p| p));;
-    assert_eq(|_|"string: get_slice", String::from_slice(str.get_slice(4, 7)), "def");;
-    let past = String::from_slice(str.get_slice(4, 20));
-    assert_eq(|_|"string: get_slice past the size", past, "def");;
-    assert_eq(|_|"string: empty", String::from_slice(str.get_slice(2, 2)), "");;
-    let bytes = ['a', 'b', '\0', 'c'];
-    assert_eq(|_|"string: null byte", String::from_slice(bytes.to_slice), "ab");;
+    assert_eq(|_|"whole: size", slice.@size, 7);;
+    assert_eq(|_|"whole: last byte", slice.get_bytes.@(6), 'f');;
+    assert_eq(|_|"whole: no copy",
+        slice.get_bytes.@array.borrow_elements(|p| p), str.get_bytes.borrow_elements(|p| p));;
+    assert_eq(|_|"inside", str.get_slice(4, 7).to_string, "def");;
+    assert_eq(|_|"inside: size", str.get_slice(4, 7).@size, 3);;
+    assert_eq(|_|"negative begin", str.get_slice(-2, 2).to_string, "ab");;
+    assert_eq(|_|"end past the size", str.get_slice(4, 20).to_string, "def");;
+    assert_eq(|_|"end before begin", str.get_slice(3, 1).to_string, "");;
+    assert_eq(|_|"begin past the size", str.get_slice(9, 12).@size, 0);;
+    assert_eq(|_|"slice of a slice", str.get_slice(1, 6).get_slice(1, 9).to_string, "c,de");;
+    let before = str.get_slice(1, 6).get_slice(-3, 1);
+    assert_eq(|_|"slice of a slice before its beginning", before.to_string, "b");;
+    assert_eq(|_|"bytes", str.get_slice(4, 7).get_bytes.to_array, ['d', 'e', 'f']);;
+    assert_eq(|_|"bytes: begin", str.get_slice(4, 7).get_bytes.@begin, 4);;
+    pure()
+);
+
+// Tests that a string slice is written as the text it holds, by `to_string` and by `format`, that
+// the slice of a whole string gives that string without a copy, and that two string slices are
+// equal when their bytes are, wherever in their strings they stand.
+test_string_slice_traits : IO () = (
+    let str = "abc,déf";
+    assert_eq(|_|"to_string: whole", str.to_slice.to_string, str);;
+    let whole = str.to_slice.to_string;
+    assert_eq(|_|"to_string: whole, no copy",
+        whole.get_bytes.borrow_elements(|p| p), str.get_bytes.borrow_elements(|p| p));;
+    assert_eq(|_|"to_string: empty", str.get_slice(2, 2).to_string, "");;
+    let (abc, def) = (str.get_slice(0, 3), str.get_slice(4, 8));
+    assert_eq(|_|"format", "<{}|{}>".format((abc, def)), "<abc|déf>");;
+    assert_eq(|_|"format: empty", "<{}>".format((str.get_slice(2, 2),)), "<>");;
+    assert_eq(|_|"format: twice", "{}{}".format((abc, abc)), "abcabc");;
+    let long = range(0, 1000).fold("", |i, text| text + i.to_string);
+    let stretch = long.get_slice(10, 2000);
+    assert_eq(|_|"format: long", "{}".format((stretch,)), long.get_sub(10, 2000));;
+    assert_eq(|_|"right aligned", "[{}]".format((def.right_aligned_to(5),)), "[  déf]");;
+    assert_eq(|_|"left aligned", "[{}]".format((def.left_aligned_to(5),)), "[déf  ]");;
+    assert_eq(|_|"in an array", "{}".format(([abc, def],)), "[abc, déf]");;
+    assert_eq(|_|"equal", str.get_slice(0, 3), "xabc".get_slice(1, 4));;
+    assert_eq(|_|"equal: different byte", str.get_slice(0, 3) == "abd".to_slice, false);;
+    assert_eq(|_|"equal: different size", str.get_slice(0, 3) == str.get_slice(0, 2), false);;
     pure()
 );

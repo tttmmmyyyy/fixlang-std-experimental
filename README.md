@@ -11,18 +11,19 @@ The module `Std.Experimental` for the [Fix programming language](https://github.
   ```
 
 - The trait `Format`. Implement it for a type so that `format` can write its values.
-- Wrappers that change how a value is written: `F32::with_precision`, `F64::with_precision`, `Array::with_separator`, `Format::right_aligned_to` and `Format::left_aligned_to`.
+- Wrappers that change how a value is written: `F32::with_precision`, `F64::with_precision`, `Array::with_separator`, `Slice::with_separator`, `Format::right_aligned_to` and `Format::left_aligned_to`.
 
   ```
   "[{}]".format((3.14159.with_precision(2_U8).right_aligned_to(6),))   // "[  3.14]"
   ```
 
-- The type `Slice a`: a stretch of an array, held without copying it. `Array::get_slice` and `String::get_slice` take one where `get_sub` would copy, and a string's bytes are a `Slice U8` without the null byte that ends them.
+- The types `Slice a` and `StringSlice`: a stretch of an array and a stretch of a string, held without copying it. `Array::get_slice` and `String::get_slice` take one where `get_sub` would copy. `to_string` and `format` write a `Slice a` as an array, and a `StringSlice` as the text it holds.
 
   ```
-  "abc,def".get_slice(4, 7).@(0)              // 'd'
-  [1, 2, 3, 4].get_slice(1, 3).to_array       // [2, 3]
-  String::from_slice("abc,def".get_slice(4, 7))   // "def"
+  [1, 2, 3, 4].get_slice(1, 3).to_array        // [2, 3]
+  [1, 2, 3, 4].get_slice(1, 3).to_string       // "[2, 3]"
+  "abc,def".get_slice(4, 7).to_string          // "def"
+  "<{}>".format(("abc,def".get_slice(4, 7),))  // "<def>"
   ```
 
 The full list is in [docs/Std.Experimental.md](docs/Std.Experimental.md).
@@ -34,7 +35,7 @@ Add the dependency to your project:
 ```toml
 [[dependencies]]
 name = "std-experimental"
-version = "0.3.1"
+version = "0.4.0"
 git = { url = "https://github.com/tttmmmyyyy/fixlang-std-experimental.git" }
 ```
 

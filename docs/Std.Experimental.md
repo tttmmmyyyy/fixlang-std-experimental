@@ -1,6 +1,6 @@
 # Std.Experimental
 
-Defined in std-experimental@0.3.1
+Defined in std-experimental@0.4.0
 
 The module `Std.Experimental` contains additions to `Std` whose design is not settled yet.
 Anything here may change or be removed in any version. When its design settles, it moves into
@@ -279,6 +279,23 @@ The elements of `slice`, in order.
 
 * `slice` - The slice.
 
+#### with_separator
+
+Type: `Std::String -> Std.Experimental::Slice a -> Std.Experimental::Format::WithSeparator a`
+
+Wraps `elements` so that `format` writes them with `separator` between them.
+
+##### Examples
+
+```fix
+assert_eq(|_|"", "{}".format(([1, 2, 3, 4].get_slice(1, 4).with_separator("-"),)), "2-3-4")
+```
+
+##### Parameters
+
+* `separator` - The text to write between two elements.
+* `elements` - The elements.
+
 ### namespace Std.Experimental::String
 
 #### format
@@ -309,26 +326,9 @@ assert_eq(|_|"", "{{{}}}".format((1,)), "{1}")
 * `values` - The values to write, in order.
 * `template` - The template.
 
-#### from_slice
-
-Type: `Std.Experimental::Slice Std::U8 -> Std::String`
-
-A string holding the bytes of `slice`, copied. Where `slice` holds a null byte, the string
-ends before it, since a string holds no null byte.
-
-##### Examples
-
-```fix
-assert_eq(|_|"", from_slice("abc,def".get_slice(4, 7)), "def")
-```
-
-##### Parameters
-
-* `slice` - The bytes.
-
 #### get_slice
 
-Type: `Std::I64 -> Std::I64 -> Std::String -> Std.Experimental::Slice Std::U8`
+Type: `Std::I64 -> Std::I64 -> Std::String -> Std.Experimental::StringSlice`
 
 The bytes of `str` from `begin` up to `end`, as a slice. This is `get_sub` without the copy.
 
@@ -338,7 +338,7 @@ empty slice.
 ##### Examples
 
 ```fix
-assert_eq(|_|"", "abc,def".get_slice(4, 7).@(0), 'd')
+assert_eq(|_|"", "abc,def".get_slice(4, 7).to_string, "def")
 ```
 
 ##### Parameters
@@ -349,13 +349,67 @@ assert_eq(|_|"", "abc,def".get_slice(4, 7).@(0), 'd')
 
 #### to_slice
 
-Type: `Std::String -> Std.Experimental::Slice Std::U8`
+Type: `Std::String -> Std.Experimental::StringSlice`
 
-The bytes of `str` as a slice, without the null byte that ends them and without a copy.
+The whole of `str` as a slice.
 
 ##### Parameters
 
 * `str` - The string.
+
+### namespace Std.Experimental::StringSlice
+
+#### @size
+
+Type: `Std.Experimental::StringSlice -> Std::I64`
+
+The number of bytes of `slice`.
+
+##### Parameters
+
+* `slice` - The string slice.
+
+#### get_bytes
+
+Type: `Std.Experimental::StringSlice -> Std.Experimental::Slice Std::U8`
+
+The bytes of `slice`, as a slice of the bytes of its string, without a copy.
+
+The array the result was taken from, its `@array`, is `String::get_bytes` of the string: the
+bytes of the whole string and the null byte that ends them.
+
+##### Examples
+
+```fix
+assert_eq(|_|"", "abc,def".get_slice(4, 7).get_bytes.to_array, ['d', 'e', 'f'])
+```
+
+##### Parameters
+
+* `slice` - The string slice.
+
+#### get_slice
+
+Type: `Std::I64 -> Std::I64 -> Std.Experimental::StringSlice -> Std.Experimental::StringSlice`
+
+The bytes of `slice` from `begin` up to `end`, counted from the beginning of `slice`, as a
+slice of the same string.
+
+`begin` and `end` are clamped to `[0, slice.@size]`, and an `end` at or before `begin` gives
+an empty slice.
+
+##### Examples
+
+```fix
+let slice = "abc,def".get_slice(4, 7);   // def
+assert_eq(|_|"", slice.get_slice(1, 3).to_string, "ef")
+```
+
+##### Parameters
+
+* `begin` - The index of the first byte.
+* `end` - The index after the last byte.
+* `slice` - The string slice.
 
 ## Types and aliases
 
@@ -366,12 +420,34 @@ The bytes of `str` as a slice, without the null byte that ends them and without 
 Defined as: `type Slice a = unbox struct { ...fields... }`
 
 A stretch of an array, held without copying it: the elements of `_array` from `_begin` up to
-`_end`. A string's bytes are a `Slice U8`.
+`_end`. A stretch of a string is a `StringSlice`.
+
+`to_string` and `format` write a slice as they write an array, `[1, 2, 3]`.
 
 A slice holds the whole array it was taken from, so the array is shared while the slice lives:
 changing either copies it.
 
 Invariant: `0 <= _begin <= _end <= _array.@size`.
+
+#### StringSlice
+
+Defined as: `type StringSlice = unbox struct { ...fields... }`
+
+A stretch of a string, held without copying it: the bytes of `_string` from `_begin` up to
+`_end`. It holds no null byte, as a string holds none.
+
+`to_string` and `format` write a string slice as the text it holds:
+
+```fix
+let slice = "abc,def".get_slice(4, 7);
+assert_eq(|_|"", slice.to_string, "def");;
+assert_eq(|_|"", "[{}]".format((slice.right_aligned_to(5),)), "[  def]")
+```
+
+A string slice holds the whole string it was taken from, so the string lives as long as the
+slice does.
+
+Invariant: `0 <= _begin <= _end <= _string.@size`.
 
 ### namespace Std.Experimental::Format
 
@@ -407,7 +483,8 @@ A floating-point number written with a fixed number of digits after the decimal 
 
 Defined as: `type WithSeparator a = unbox struct { ...fields... }`
 
-The elements of an array, written with a separator between them. Created by `with_separator`.
+The elements of an array or of a slice, written with a separator between them. Created by
+`with_separator`.
 
 ### namespace Std.Experimental::FormatArgs
 
@@ -537,6 +614,32 @@ Writes `()`, as `to_string` does.
 ### impl `Std.Experimental::Format::WithPrecision Std::F64 : Std.Experimental::Format`
 
 ### impl `[a : Std.Experimental::Format] Std.Experimental::Format::WithSeparator a : Std.Experimental::Format`
+
+### impl `[a : Std.Experimental::Format] Std.Experimental::Slice a : Std.Experimental::Format`
+
+Writes the elements between `[` and `]`, separated by `, `, as `to_string` does.
+
+### impl `[a : Std::Eq] Std.Experimental::Slice a : Std::Eq`
+
+Two slices are equal when they hold equal elements in the same order, wherever in their arrays
+they stand.
+
+### impl `[a : Std::ToString] Std.Experimental::Slice a : Std::ToString`
+
+Writes the elements between `[` and `]`, separated by `, `, as an array is written.
+
+### impl `Std.Experimental::StringSlice : Std.Experimental::Format`
+
+Writes the text `slice` holds, as `to_string` does.
+
+### impl `Std.Experimental::StringSlice : Std::Eq`
+
+Two string slices are equal when they hold the same bytes, wherever in their strings they stand.
+
+### impl `Std.Experimental::StringSlice : Std::ToString`
+
+The text `slice` holds, as a string. A slice of a whole string gives that string, and any other
+slice gives a copy of its bytes.
 
 ### impl `[a : Std.Experimental::Format] Std::Array a : Std.Experimental::Format`
 
