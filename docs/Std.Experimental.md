@@ -7,9 +7,9 @@ Anything here may change or be removed in any version. When its design settles, 
 `Std`.
 
 `String::format` fills the placeholders `{}` of a template with values of any types that
-implement `Format`. `IO::printf` writes the same text to the standard output as it goes, so the
-text of a long array is not held in memory as a whole. A wrapper such as `with_precision` or
-`right_aligned_to` changes how a value is written, and one wrapper can wrap another:
+implement `Format`. `IO::printf` writes the same text to the standard output. A wrapper such as
+`with_precision` or `right_aligned_to` changes how a value is written, and one wrapper can wrap
+another:
 
 ```fix
 let name = "pi".left_aligned_to(4);
@@ -62,31 +62,13 @@ A slice of all the elements of `array`.
 
 * `array` - The array.
 
-#### with_separator
-
-Type: `Std::String -> Std::Array a -> Std.Experimental::Format::WithSeparator a`
-
-Wraps `elements` so that `format` writes them with `separator` between them.
-
-##### Examples
-
-```fix
-assert_eq(|_|"", "{}".format(([1, 2, 3].with_separator(", "),)), "1, 2, 3")
-```
-
-##### Parameters
-
-* `separator` - The text to write between two elements.
-* `elements` - The elements.
-
 ### namespace Std.Experimental::Debug
 
 #### debug_eprintf
 
 Type: `[args : Std.Experimental::FormatArgs] args -> Std::String -> ()`
 
-Writes the text that `format` makes of `values` and `template` to the standard error and
-flushes it, as `debug_eprint` does.
+Same as `eprintf`, but runs outside `IO` and flushes the standard error, like `debug_eprint`.
 
 NOTE: This function is not pure and should only be used for temporary debugging purposes.
 
@@ -99,8 +81,8 @@ NOTE: This function is not pure and should only be used for temporary debugging 
 
 Type: `[args : Std.Experimental::FormatArgs] args -> Std::String -> ()`
 
-Writes the text that `format` makes of `values` and `template`, followed by a newline, to the
-standard error and flushes it, as `debug_eprintln` does.
+Same as `eprintfln`, but runs outside `IO` and flushes the standard error, like
+`debug_eprintln`.
 
 NOTE: This function is not pure and should only be used for temporary debugging purposes.
 
@@ -113,8 +95,7 @@ NOTE: This function is not pure and should only be used for temporary debugging 
 
 Type: `[args : Std.Experimental::FormatArgs] args -> Std::String -> ()`
 
-Writes the text that `format` makes of `values` and `template` to the standard output and
-flushes it, as `debug_print` does.
+Same as `printf`, but runs outside `IO` and flushes the standard output, like `debug_print`.
 
 NOTE: This function is not pure and should only be used for temporary debugging purposes.
 
@@ -127,8 +108,8 @@ NOTE: This function is not pure and should only be used for temporary debugging 
 
 Type: `[args : Std.Experimental::FormatArgs] args -> Std::String -> ()`
 
-Writes the text that `format` makes of `values` and `template`, followed by a newline, to the
-standard output and flushes it, as `debug_println` does.
+Same as `printfln`, but runs outside `IO` and flushes the standard output, like
+`debug_println`.
 
 NOTE: This function is not pure and should only be used for temporary debugging purposes.
 
@@ -250,8 +231,7 @@ that placeholder.
 
 Type: `[args : Std.Experimental::FormatArgs] args -> Std::String -> Std::IO ()`
 
-Writes the text that `format` makes of `values` and `template` to the standard error, as
-`printf` does to the standard output.
+Same as `printf`, but writes to the standard error.
 
 ##### Parameters
 
@@ -262,8 +242,7 @@ Writes the text that `format` makes of `values` and `template` to the standard e
 
 Type: `[args : Std.Experimental::FormatArgs] args -> Std::String -> Std::IO ()`
 
-Writes the text that `format` makes of `values` and `template`, followed by a newline, to
-the standard error, as `printf` does to the standard output.
+Same as `printf`, but writes to the standard error and adds a newline at the end.
 
 ##### Parameters
 
@@ -274,12 +253,8 @@ the standard error, as `printf` does to the standard output.
 
 Type: `[args : Std.Experimental::FormatArgs] args -> Std::String -> Std::IO ()`
 
-Writes the text that `format` makes of `values` and `template` to the standard output.
-
-It writes the text out as it goes, after each value and after each element of an array or a
-slice, once more than a few kilobytes of it are waiting. So the text of a long array is not
-held in memory as a whole. The text goes through the same buffer of the C library as `print`,
-so the two can be mixed.
+Formats `values` into `template`, as `format` does, and writes the result to the standard
+output.
 
 ##### Examples
 
@@ -296,13 +271,32 @@ main : IO () = "{} + {} = {}\n".printf((1, 2.5, "three"));
 
 Type: `[args : Std.Experimental::FormatArgs] args -> Std::String -> Std::IO ()`
 
-Writes the text that `format` makes of `values` and `template`, followed by a newline, to
-the standard output, as `printf` does.
+Same as `printf`, but adds a newline at the end.
 
 ##### Parameters
 
 * `values` - The values to write, in order.
 * `template` - The template.
+
+### namespace Std.Experimental::Iterator
+
+#### joined_with
+
+Type: `Std::String -> it -> Std.Experimental::Format::Joined it`
+
+Wraps `elements` so that `format` writes them with `separator` between them, as `String::join`
+joins strings.
+
+##### Examples
+
+```fix
+assert_eq(|_|"", "{}".format(([1, 2, 3].to_iter.joined_with(", "),)), "1, 2, 3")
+```
+
+##### Parameters
+
+* `separator` - The text to write between two elements.
+* `elements` - The elements.
 
 ### namespace Std.Experimental::Slice
 
@@ -400,23 +394,6 @@ An iterator over the elements of `slice`.
 ##### Parameters
 
 * `slice` - The slice.
-
-#### with_separator
-
-Type: `Std::String -> Std.Experimental::Slice a -> Std.Experimental::Format::WithSeparator a`
-
-Wraps `elements` so that `format` writes them with `separator` between them.
-
-##### Examples
-
-```fix
-assert_eq(|_|"", "{}".format(([1, 2, 3, 4].get_slice(1, 4).with_separator("-"),)), "2-3-4")
-```
-
-##### Parameters
-
-* `separator` - The text to write between two elements.
-* `elements` - The elements.
 
 ### namespace Std.Experimental::String
 
@@ -537,9 +514,9 @@ Type: `[m : Std.Experimental::TextWriter] Std.Experimental::Format::TextOut -> m
 
 Trait member of `Std.Experimental::TextWriter`
 
-Writes the text written so far out to where it goes if enough of it is waiting, and returns
-what remains of it to write after. The text is the same whether it is written out here or
-later.
+If `out` is longer than a threshold, writes it to the destination and returns an empty
+`TextOut`. Otherwise returns `out` unchanged. Each implementation of this trait sets its own
+threshold.
 
 ##### Parameters
 
@@ -585,6 +562,13 @@ A string slice keeps a reference to the string it was taken from.
 
 ### namespace Std.Experimental::Format
 
+#### Joined
+
+Defined as: `type Joined it = unbox struct { ...fields... }`
+
+The elements of an iterator, written with a separator between them. Created by
+`Iterator::joined_with`.
+
 #### LeftAligned
 
 Defined as: `type LeftAligned a = unbox struct { ...fields... }`
@@ -601,8 +585,8 @@ A value padded with spaces on the left to a width. Created by `right_aligned_to`
 
 Defined as: `type TextOut = unbox struct { ...fields... }`
 
-The text written and not yet written out. `Format::write_text` appends the text of a value to
-it, and `TextWriter::flush_if_full` writes it out to where the text goes.
+Text that has been written but not yet flushed. `Format::write_text` appends to it, and
+`TextWriter::flush_if_full` flushes it.
 
 #### WithPrecision
 
@@ -610,13 +594,6 @@ Defined as: `type WithPrecision a = unbox struct { ...fields... }`
 
 A floating-point number written with a fixed number of digits after the decimal point. Created by
 `F32::with_precision` or `F64::with_precision`.
-
-#### WithSeparator
-
-Defined as: `type WithSeparator a = unbox struct { ...fields... }`
-
-The elements of an array or of a slice, written with a separator between them. Created by
-`with_separator`.
 
 ### namespace Std.Experimental::FormatArgs
 
@@ -635,9 +612,8 @@ written, and the text written so far.
 
 A type whose values `format` and `printf` can write.
 
-`write_text` appends the text of a value to `out`, and returns `out` in the monad `m` of the
-`TextWriter` that the text goes to. Write the text of a value by writing the texts of its parts,
-one after another:
+`write_text` appends the text of a value to `out` and returns the new `out` in the monad `m`. To
+implement it, write the parts of the value one by one:
 
 ```fix
 impl Point : Format {
@@ -651,21 +627,13 @@ impl Point : Format {
 }
 ```
 
-The text of a value that holds many others, as an array does, can be long. Call
-`TextWriter::flush_if_full` after writing each of them, so that `printf` writes the text out as it
-goes.
-Without it, the text is the same, and `printf` holds the text of the whole value in memory until
-it is written. The implementations of this module for arrays and slices call it.
+Calling `TextWriter::flush_if_full` flushes `out` if it is longer than the threshold: the text is
+written out, or moved to a lower-level buffer. So when writing a large value, call
+`flush_if_full` at suitable points to keep memory use low. For reference, `printf` and the other
+output functions use a threshold of 8192 bytes. For example, the implementation of `Format` for
+`Joined`, which also writes arrays and slices, calls it after each element.
 
-If the type also implements `ToString`, `write_text` must write the same text as `to_string`. A
-type that implements `ToString` can implement `Format` in one line, at the cost of the
-intermediate string:
-
-```fix
-impl Point : Format {
-    write_text = |p, out| out.write_text(p.to_string);
-}
-```
+The implementations in this module write the same text as `to_string`.
 
 ##### method `write_text`
 
@@ -697,19 +665,18 @@ that placeholder.
 
 #### trait `[m : *->*] m : TextWriter`
 
-Where a text goes: the monad `Format::write_text` writes in.
+A destination for text: the monad in which `Format::write_text` runs.
 
-A writer of a text appends it to a `TextOut`, and calls `flush_if_full` from time to time.
-`printf` writes the text out there once more than a few kilobytes of it are waiting. `format`
-keeps the whole text in memory, and its `flush_if_full` does nothing.
+Writers append text to a `TextOut`, and may call `flush_if_full` to let the destination write it
+out.
 
 ##### method `flush_if_full`
 
 Type: `Std.Experimental::Format::TextOut -> m Std.Experimental::Format::TextOut`
 
-Writes the text written so far out to where it goes if enough of it is waiting, and returns
-what remains of it to write after. The text is the same whether it is written out here or
-later.
+If `out` is longer than a threshold, writes it to the destination and returns an empty
+`TextOut`. Otherwise returns `out` unchanged. Each implementation of this trait sets its own
+threshold.
 
 ###### Parameters
 
@@ -771,21 +738,21 @@ Writes `()`, as `to_string` does.
 
 ### impl `[t0 : Std.Experimental::Format] (t0,) : Std.Experimental::FormatArgs`
 
+### impl `[it : Std::Iterator, a : Std.Experimental::Format] Std.Experimental::Format::Joined it : Std.Experimental::Format`
+
+Writes each element with `write_text`, and calls `flush_if_full` after it.
+
 ### impl `[a : Std.Experimental::Format] Std.Experimental::Format::LeftAligned a : Std.Experimental::Format`
 
-Writes the value in `Identity`, so that its whole text is at hand to measure.
+Writes the value in `Identity`, so that its whole text is in `out` when it is measured.
 
 ### impl `[a : Std.Experimental::Format] Std.Experimental::Format::RightAligned a : Std.Experimental::Format`
 
-Writes the value in `Identity`, so that its whole text is at hand to measure and to move.
+Writes the value in `Identity`, so that its whole text is in `out` when it is measured and moved.
 
 ### impl `Std.Experimental::Format::WithPrecision Std::F32 : Std.Experimental::Format`
 
 ### impl `Std.Experimental::Format::WithPrecision Std::F64 : Std.Experimental::Format`
-
-### impl `[a : Std.Experimental::Format] Std.Experimental::Format::WithSeparator a : Std.Experimental::Format`
-
-Writes each element with `write_text`, and calls `flush_if_full` after it.
 
 ### impl `[a : Std.Experimental::Format] Std.Experimental::Slice a : Std.Experimental::Format`
 
@@ -837,7 +804,7 @@ Writes the shortest decimal text that reads back as the same number, as `to_stri
 
 ### impl `Std::Identity : Std.Experimental::TextWriter`
 
-`format` writes in `Identity`, which keeps the whole text.
+`format` runs in `Identity`, which keeps the whole text.
 
 ### impl `[a : Std.Experimental::Format] Std::Option a : Std.Experimental::Format`
 

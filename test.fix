@@ -9,9 +9,9 @@ import Std::{
     Option::{none, some}, Result::{err, ok}, String::{@size, get_sub, join}, ToString::to_string, ToU8::u8
 };
 import Std.Experimental::{
-    Format, FormatArgs, Array::{get_slice, to_slice, with_separator}, F32::with_precision, F64::with_precision, 
+    Format, FormatArgs, Array::{get_slice, to_slice}, Iterator::joined_with, F32::with_precision, F64::with_precision, 
     Format::{TextOut, _HandleWriter, _buffer_size, TextOut::@_bytes, _HandleWriter::@_run, left_aligned_to, right_aligned_to, write_text}, IO::_write_format, TextWriter::flush_if_full, 
-    Slice::{@, @array, @begin, @end, @size, get_slice, to_array, to_iter, with_separator}, 
+    Slice::{@, @array, @begin, @end, @size, get_slice, to_array, to_iter}, 
     String::{format, get_slice, to_slice}, StringSlice::{@size, get_bytes, get_slice}
 };
 
@@ -19,7 +19,7 @@ test : IO () = (
     test_placeholders;;
     test_same_text_as_to_string;;
     test_with_precision;;
-    test_with_separator;;
+    test_joined_with;;
     test_aligned;;
     test_user_type;;
     test_shared_out;;
@@ -125,16 +125,17 @@ test_with_precision : IO () = (
     ))
 );
 
-// Tests that `with_separator` writes the separator between elements, for zero, one and many
+// Tests that `joined_with` writes the separator between elements, for zero, one and many
 // elements, and for an empty separator.
-test_with_separator : IO () = (
-    assert_eq(|_|"none", "[{}]".format((([] : Array I64).with_separator(", "),)), "[]");;
-    assert_eq(|_|"one", "[{}]".format(([1].with_separator(", "),)), "[1]");;
-    assert_eq(|_|"several", "[{}]".format(([1, 2, 3].with_separator(" | "),)), "[1 | 2 | 3]");;
-    assert_eq(|_|"empty separator", "[{}]".format((["a", "b"].with_separator(""),)), "[ab]");;
+test_joined_with : IO () = (
+    assert_eq(|_|"none", "[{}]".format((([] : Array I64).to_iter.joined_with(", "),)), "[]");;
+    assert_eq(|_|"one", "[{}]".format(([1].to_iter.joined_with(", "),)), "[1]");;
+    assert_eq(|_|"several", "[{}]".format(([1, 2, 3].to_iter.joined_with(" | "),)), "[1 | 2 | 3]");;
+    assert_eq(|_|"empty separator", "[{}]".format((["a", "b"].to_iter.joined_with(""),)), "[ab]");;
+    assert_eq(|_|"mapped range", "{}".format((range(1, 4).map(|i| i * i).joined_with(", "),)), "1, 4, 9");;
     // Many numbers make the text grow many times.
     let many = Array::from_map(10000, |i| i);
-    assert_eq(|_|"many", "{}".format((many.with_separator(","),)), many.to_iter.map(to_string).join(","));;
+    assert_eq(|_|"many", "{}".format((many.to_iter.joined_with(","),)), many.to_iter.map(to_string).join(","));;
     pure()
 );
 
@@ -237,7 +238,7 @@ test_write_format : IO () = (
     let many = Array::from_map(10000, |i| i);
     check_write_format("long value", "", (many,), "<{}>");;
     let nested = Array::from_map(100, |i| Array::from_map(i * 10, |j| (j, some("x"))));
-    check_write_format("nested values", "\n", (1, nested, many.with_separator(" ")), "{} {} {}");;
+    check_write_format("nested values", "\n", (1, nested, many.to_iter.joined_with(" ")), "{} {} {}");;
     check_write_format("aligned long value", "", (many.right_aligned_to(5),), "{}");;
     let written = *written_to_file(|h|
         write_string(h, "before ").try(|e| undefined(e));;
@@ -311,9 +312,9 @@ test_slice_traits : IO () = (
     assert_eq(|_|"format", "{}".format((slice,)), "[11, 12, 13]");;
     assert_eq(|_|"format: empty", "{}".format((array.get_slice(2, 2),)), "[]");;
     assert_eq(|_|"format: one", "{}".format((array.get_slice(4, 5),)), "[14]");;
-    assert_eq(|_|"with_separator", "{}".format((slice.with_separator("-"),)), "11-12-13");;
+    assert_eq(|_|"joined_with", "{}".format((slice.to_iter.joined_with("-"),)), "11-12-13");;
     let none = array.get_slice(2, 2);
-    assert_eq(|_|"with_separator: empty", "<{}>".format((none.with_separator("-"),)), "<>");;
+    assert_eq(|_|"joined_with: empty", "<{}>".format((none.to_iter.joined_with("-"),)), "<>");;
     let last = array.get_slice(4, 5);
     assert_eq(|_|"aligned", "[{}]".format((last.right_aligned_to(6),)), "[  [14]]");;
     assert_eq(|_|"equal", slice, [0, 11, 12, 13].get_slice(1, 4));;
