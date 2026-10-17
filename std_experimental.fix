@@ -70,7 +70,7 @@ namespace String {
     // * `values` - The values to write, in order.
     // * `template` - The template.
     format : [args : FormatArgs] args -> String -> String = |values, template| (
-        let cursor = _start_template(template, TextOut { _bytes : Array::empty(2 * template.@size) });
+        let cursor = _start_template(template, TextOut { _bytes : Array::empty(_initial_capacity(template)) });
         let Identity { data : cursor } = cursor.write_args(values);
         // A `TextOut` contains no null byte, so the string ends at the null added here.
         String { _data : cursor._finish.@_bytes.push_back('\0') }
@@ -125,7 +125,7 @@ namespace IO {
     // * `values` - The values to write, in order.
     // * `template` - The template.
     _write_format : [args : FormatArgs] IOHandle -> String -> args -> String -> IO () = |handle, ending, values, template| (
-        let cursor = _start_template(template, TextOut { _bytes : Array::empty(2 * template.@size) });
+        let cursor = _start_template(template, TextOut { _bytes : Array::empty(_initial_capacity(template)) });
         let cursor = *(cursor.write_args(values).@_run)(handle);
         let bytes = cursor._finish.@_bytes.append(ending.get_bytes).pop_back;
         write_bytes(handle, bytes).to_result;;
@@ -410,6 +410,13 @@ namespace FormatArgs {
 }
 
 namespace FormatArgs::TemplateCursor {
+    // The capacity to start the text of `template` with: room for the template and for a few short
+    // values, so that a short text is written without growing the array.
+    //
+    // # Parameters
+    // * `template` - The template.
+    _initial_capacity : String -> I64 = |template| 2 * template.@size + 64;
+
     // A cursor at the start of `template`. The text of the template is appended to `out`.
     //
     // # Parameters
