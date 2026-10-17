@@ -10,7 +10,13 @@ The module `Std.Experimental` for the [Fix programming language](https://github.
   "{} + {} = {}".format((1, 2.5, "three"))   // "1 + 2.5 = three"
   ```
 
-- The trait `Format`. Implement it for a type so that `format` can write its values.
+- `IO::printf` and `IO::printfln` write the same text to the standard output. They write it out as they go, so the text of a long array is not held in memory as a whole. `IO::eprintf` and `IO::eprintfln` write to the standard error, and `Debug::debug_printf` and the others write and flush outside `IO`, as `debug_print` does.
+
+  ```
+  "x = {}, y = {}".printfln((1, [2, 3]))     // prints "x = 1, y = [2, 3]"
+  ```
+
+- The trait `Format`. Implement it for a type so that `format` and `printf` can write its values.
 - Wrappers that change how a value is written: `F32::with_precision`, `F64::with_precision`, `Array::with_separator`, `Slice::with_separator`, `Format::right_aligned_to` and `Format::left_aligned_to`.
 
   ```
@@ -35,7 +41,7 @@ Add the dependency to your project:
 ```toml
 [[dependencies]]
 name = "std-experimental"
-version = "0.4.0"
+version = "0.5.0"
 git = { url = "https://github.com/tttmmmyyyy/fixlang-std-experimental.git" }
 ```
 

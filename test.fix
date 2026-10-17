@@ -1,15 +1,16 @@
 module Test;
 
 import Std::{
-    Array, F32, F64, I64, IO, Option, Result, String, ToString, 
-    Array::{@, @size, borrow_elements, from_map, to_iter}, String::get_bytes, Iterator::to_array, 
+    undefined, Array, F32, F64, I64, IO, Identity, Option, Ptr, Result, String, ToString, 
+    IO::{IOHandle, read_string, write_string, IOFail::try, IOHandle::from_file_ptr}, Monad::bind, 
+    Array::{@, @size, borrow_elements, fill, from_map, to_iter}, String::get_bytes, Iterator::to_array, 
     Debug::assert_eq, F32::{infinity, quiet_nan, to_string_precision}, 
     F64::{infinity, quiet_nan, to_string_precision}, Iterator::{fold, fold_m, map, range}, Monad::pure, 
-    Option::{none, some}, Result::{err, ok}, String::{get_sub, join}, ToString::to_string, ToU8::u8
+    Option::{none, some}, Result::{err, ok}, String::{@size, get_sub, join}, ToString::to_string, ToU8::u8
 };
 import Std.Experimental::{
-    Format, Array::{get_slice, to_slice, with_separator}, F32::with_precision, F64::with_precision, 
-    Format::{left_aligned_to, right_aligned_to, write_text}, 
+    Format, FormatArgs, Array::{get_slice, to_slice, with_separator}, F32::with_precision, F64::with_precision, 
+    Format::{TextOut, _HandleWriter, _buffer_size, TextOut::@_bytes, _HandleWriter::@_run, left_aligned_to, right_aligned_to, write_text}, IO::_write_format, TextWriter::flush_if_full, 
     Slice::{@, @array, @begin, @end, @size, get_slice, to_array, to_iter, with_separator}, 
     String::{format, get_slice, to_slice}, StringSlice::{@size, get_bytes, get_slice}
 };
@@ -22,6 +23,8 @@ test : IO () = (
     test_aligned;;
     test_user_type;;
     test_shared_out;;
+    test_write_format;;
+    test_flush_if_full;;
     test_slice_ranges;;
     test_slice_reads;;
     test_slice_traits;;
@@ -157,7 +160,13 @@ test_aligned : IO () = (
 type Point = struct { x : I64, y : F64 };
 
 impl Point : Format {
-    write_text = |p, out| out.write_text("(").write_text(p.@x).write_text(", ").write_text(p.@y).write_text(")");
+    write_text = |p, out| (
+        let out = *out.write_text("(");
+        let out = *out.write_text(p.@x);
+        let out = *out.write_text(", ");
+        let out = *out.write_text(p.@y);
+        out.write_text(")")
+    );
 }
 
 // Tests that `format` writes a user type that implements `Format` by writing its parts, also inside
@@ -175,8 +184,8 @@ type TwoTries a = struct { value : a };
 // when the second write starts.
 impl [a : Format] TwoTries a : Format {
     write_text = |t, out| (
-        let first = out.write_text(t.@value).write_text(" first");
-        let second = out.write_text(t.@value).write_text(" second");
+        let Identity { data : first } = out.write_text(t.@value).bind(write_text(" first"));
+        let second = out.write_text(t.@value).bind(write_text(" second"));
         eval first;
         second
     );
@@ -189,6 +198,71 @@ test_shared_out : IO () = (
     assert_eq(|_|"shared float", "[{}]".format(((TwoTries { value : 7 }, 2.5),)), "[(7 second, 2.5)]");;
     let slice = "abc,def".get_slice(4, 7);
     assert_eq(|_|"shared string slice", "[{}]".format((TwoTries { value : slice },)), "[def second]");;
+    pure()
+);
+
+// Runs `write` on a new temporary file, and returns what it wrote there.
+//
+// # Parameters
+// * `write` - The action that writes to the file.
+written_to_file : (IOHandle -> IO ()) -> IO String = |write| (
+    let file = *FFI_CALL_IO[Ptr tmpfile()];
+    let handle = *from_file_ptr(file);
+    write(handle);;
+    FFI_CALL_IO[() rewind(Ptr), file];;
+    read_string(handle).try(|e| undefined(e))
+);
+
+// Checks that `_write_format` writes the text `format` makes of `values` and `template`, followed by
+// `ending`.
+//
+// # Parameters
+// * `name` - The name of the case, shown when the check fails.
+// * `ending` - The text to write after the text of the template.
+// * `values` - The values.
+// * `template` - The template.
+check_write_format : [args : FormatArgs] String -> String -> args -> String -> IO () = |name, ending, values, template| (
+    let written = *written_to_file(|h| _write_format(h, ending, values, template));
+    assert_eq(|_|name, written, template.format(values) + ending)
+);
+
+// Tests that `_write_format`, which `printf` and the others are made of, writes the same text as
+// `format` followed by the ending, also where the text is long enough to be written out many times
+// along the way, even in the middle of a value, and that the text goes in order with what is
+// written to the handle before and after it.
+test_write_format : IO () = (
+    check_write_format("no ending", "", (1, "two"), "{} and {}");;
+    check_write_format("newline", "\n", (1, "two"), "{} and {}");;
+    check_write_format("no placeholders", "\n", (), "abc");;
+    let many = Array::from_map(10000, |i| i);
+    check_write_format("long value", "", (many,), "<{}>");;
+    let nested = Array::from_map(100, |i| Array::from_map(i * 10, |j| (j, some("x"))));
+    check_write_format("nested values", "\n", (1, nested, many.with_separator(" ")), "{} {} {}");;
+    check_write_format("aligned long value", "", (many.right_aligned_to(5),), "{}");;
+    let written = *written_to_file(|h|
+        write_string(h, "before ").try(|e| undefined(e));;
+        _write_format(h, "", (many,), "{}");;
+        write_string(h, " after").try(|e| undefined(e))
+    );
+    assert_eq(|_|"in order", written, "before " + "{}".format((many,)) + " after");;
+    pure()
+);
+
+// Tests that `flush_if_full` of a handle keeps a text of up to `_buffer_size` bytes, and writes out a
+// longer one and returns it emptied.
+test_flush_if_full : IO () = (
+    let short = TextOut { _bytes : Array::fill(_buffer_size, 'a') };
+    let written = *written_to_file(|h|
+        let out = *((short.flush_if_full : _HandleWriter TextOut).@_run)(h);
+        assert_eq(|_|"short: kept", out.@_bytes.@size, _buffer_size)
+    );
+    assert_eq(|_|"short: not written", written, "");;
+    let long = TextOut { _bytes : Array::fill(_buffer_size + 1, 'a') };
+    let written = *written_to_file(|h|
+        let out = *((long.flush_if_full : _HandleWriter TextOut).@_run)(h);
+        assert_eq(|_|"long: emptied", out.@_bytes.@size, 0)
+    );
+    assert_eq(|_|"long: written", written.@size, _buffer_size + 1);;
     pure()
 );
 
