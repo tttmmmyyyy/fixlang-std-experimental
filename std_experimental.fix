@@ -3,8 +3,9 @@
 // `Std`.
 //
 // `String::format` fills the placeholders `{}` of a template with values of any types that
-// implement `Format`. A wrapper such as `with_precision` or `right_aligned_to` changes how a value
-// is written, and one wrapper can wrap another:
+// implement `Format`. `IO::printf` writes the same text to the standard output. A wrapper such as
+// `with_precision` or `right_aligned_to` changes how a value is written, and one wrapper can wrap
+// another:
 //
 // ```fix
 // let name = "pi".left_aligned_to(4);
@@ -24,8 +25,8 @@
 module Std.Experimental;
 
 import Std::{
-    loop, undefined, Array, Bool, Eq, F32, F64, I16, I32, I64, I8, Iterator, Option, Ptr, Result, String, 
-    ToString, U16, U32, U64, U8, 
+    loop, loop_m, undefined, Array, Bool, Eq, F32, F64, Functor, I16, I32, I64, I8, IO, Identity, Iterator, Monad, 
+    Option, Ptr, Result, String, ToString, U16, U32, U64, U8, 
     Array::{
         @, @capacity, @size, _check_range, _unsafe_copy_range_bounds_unchecked, _unsafe_grow_size, 
         append, empty, get_sub, pop_back, push_back, reserve, resize, set, truncate, 
@@ -33,7 +34,10 @@ import Std::{
     }, 
     F32::{_fixed_text_max_length, _shortest_text_max_length, _write_fixed_text, _write_shortest_text}, 
     F64::{_fixed_text_max_length, _shortest_text_max_length, _write_fixed_text, _write_shortest_text}, 
-    I64::_sign_and_magnitude, Iterator::{Item, fold, map, range}, LessThan::{max, min}, LoopState::{break, continue}, 
+    I64::_sign_and_magnitude, 
+    IO::{IOHandle, flush, stderr, stdout, unsafe_perform, write_bytes, IOFail::to_result}, 
+    Iterator::{Item, advance, fold, map, range}, Array::to_iter, LessThan::{max, min}, 
+    Functor::map, LoopState::{break, break_m, continue, continue_m}, Monad::{bind, pure}, 
     Option::{as_some, is_none}, Result::{as_err, as_ok, is_ok}, 
     String::{
         @size, _address_length, _decimal_integer_length, _write_address, _write_decimal_integer, 
@@ -66,21 +70,128 @@ namespace String {
     // * `values` - The values to write, in order.
     // * `template` - The template.
     format : [args : FormatArgs] args -> String -> String = |values, template| (
-        let cursor = TemplateCursor {
-            _template : template,
-            _at : 0,
-            _out : TextOut { _bytes : Array::empty(2 * template.@size) }
-        };
-        cursor.write_args(values)._finish
+        let cursor = _start_template(template, TextOut { _bytes : Array::empty(_initial_capacity(template)) });
+        let Identity { data : cursor } = cursor.write_args(values);
+        // A `TextOut` contains no null byte, so the string ends at the null added here.
+        String { _data : cursor._finish.@_bytes.push_back('\0') }
     );
 }
 
+namespace IO {
+    // Formats `values` into `template`, as `format` does, and writes the result to the standard
+    // output.
+    //
+    // # Examples
+    //
+    // ```fix
+    // # module DocTest;
+    // # import Std.Experimental;
+    // #
+    // main : IO () = "{} + {} = {}\n".printf((1, 2.5, "three"));
+    // ```
+    //
+    // # Parameters
+    // * `values` - The values to write, in order.
+    // * `template` - The template.
+    printf : [args : FormatArgs] args -> String -> IO () = |values, template| _write_format(stdout, "", values, template);
+
+    // Same as `printf`, but adds a newline at the end.
+    //
+    // # Parameters
+    // * `values` - The values to write, in order.
+    // * `template` - The template.
+    printfln : [args : FormatArgs] args -> String -> IO () = |values, template| _write_format(stdout, "\n", values, template);
+
+    // Same as `printf`, but writes to the standard error.
+    //
+    // # Parameters
+    // * `values` - The values to write, in order.
+    // * `template` - The template.
+    eprintf : [args : FormatArgs] args -> String -> IO () = |values, template| _write_format(stderr, "", values, template);
+
+    // Same as `printf`, but writes to the standard error and adds a newline at the end.
+    //
+    // # Parameters
+    // * `values` - The values to write, in order.
+    // * `template` - The template.
+    eprintfln : [args : FormatArgs] args -> String -> IO () = |values, template| _write_format(stderr, "\n", values, template);
+
+    // Formats `values` into `template`, and writes the result and then `ending` to `handle`. Write
+    // errors are ignored, as in `print`.
+    //
+    // # Parameters
+    // * `handle` - The handle to write to.
+    // * `ending` - The text to write after the text of the template.
+    // * `values` - The values to write, in order.
+    // * `template` - The template.
+    _write_format : [args : FormatArgs] IOHandle -> String -> args -> String -> IO () = |handle, ending, values, template| (
+        let cursor = _start_template(template, TextOut { _bytes : Array::empty(_initial_capacity(template)) });
+        let cursor = *(cursor.write_args(values).@_run)(handle);
+        let bytes = cursor._finish.@_bytes.append(ending.get_bytes).pop_back;
+        write_bytes(handle, bytes).to_result;;
+        pure()
+    );
+}
+
+namespace Debug {
+    // Same as `printf`, but runs outside `IO` and flushes the standard output, like `debug_print`.
+    //
+    // NOTE: This function is not pure and should only be used for temporary debugging purposes.
+    //
+    // # Parameters
+    // * `values` - The values to write, in order.
+    // * `template` - The template.
+    debug_printf : [args : FormatArgs] args -> String -> () = |values, template| (
+        template.printf(values);; stdout.flush;; pure()
+    ).unsafe_perform;
+
+    // Same as `printfln`, but runs outside `IO` and flushes the standard output, like
+    // `debug_println`.
+    //
+    // NOTE: This function is not pure and should only be used for temporary debugging purposes.
+    //
+    // # Parameters
+    // * `values` - The values to write, in order.
+    // * `template` - The template.
+    debug_printfln : [args : FormatArgs] args -> String -> () = |values, template| (
+        template.printfln(values);; stdout.flush;; pure()
+    ).unsafe_perform;
+
+    // Same as `eprintf`, but runs outside `IO` and flushes the standard error, like `debug_eprint`.
+    //
+    // NOTE: This function is not pure and should only be used for temporary debugging purposes.
+    //
+    // # Parameters
+    // * `values` - The values to write, in order.
+    // * `template` - The template.
+    debug_eprintf : [args : FormatArgs] args -> String -> () = |values, template| (
+        template.eprintf(values);; stderr.flush;; pure()
+    ).unsafe_perform;
+
+    // Same as `eprintfln`, but runs outside `IO` and flushes the standard error, like
+    // `debug_eprintln`.
+    //
+    // NOTE: This function is not pure and should only be used for temporary debugging purposes.
+    //
+    // # Parameters
+    // * `values` - The values to write, in order.
+    // * `template` - The template.
+    debug_eprintfln : [args : FormatArgs] args -> String -> () = |values, template| (
+        template.eprintfln(values);; stderr.flush;; pure()
+    ).unsafe_perform;
+}
+
 namespace Format {
-    // The text written so far. `Format::write_text` appends the text of a value to it.
+    // Text that has been written but not yet flushed. `Format::write_text` appends to it, and
+    // `TextWriter::flush_if_full` flushes it.
     type TextOut = struct {
         // The text. It contains no null byte.
         _bytes : Array U8
     };
+
+    // `printf` and the other output functions flush the text once it is longer than this many
+    // bytes.
+    _buffer_size : I64 = 8192;
 }
 
 namespace Format::TextOut {
@@ -153,6 +264,16 @@ namespace Format::TextOut {
         TextOut { _bytes : out._reserve_to_append(count).resize(size + count, ' ') }
     );
 
+    // Appends the text of `str`.
+    //
+    // # Parameters
+    // * `str` - The string to write.
+    // * `out` - The text written so far.
+    _write_string : String -> TextOut -> TextOut = |str, out| (
+        // `append` copies the bytes of `str`, so removing the null afterwards does not change `str`.
+        TextOut { _bytes : out.@_bytes.append(str.get_bytes).pop_back }
+    );
+
     // Makes room for `count` more bytes at the end of `out`, so that appending them does not
     // reallocate, and returns the bytes of `out`.
     //
@@ -186,11 +307,54 @@ namespace Format::TextOut {
     );
 }
 
-// A type whose values `format` can write.
+// A destination for text: the monad in which `Format::write_text` runs.
 //
-// If the type also implements `ToString`, `write_text` must write the same text as `to_string`.
+// Writers append text to a `TextOut`, and may call `flush_if_full` to let the destination write it
+// out.
+trait [m : *->*] m : TextWriter {
+    // If `out` is longer than a threshold, writes it to the destination and returns an empty
+    // `TextOut`. Otherwise returns `out` unchanged. Each implementation of this trait sets its own
+    // threshold.
+    //
+    // # Parameters
+    // * `out` - The text written so far.
+    flush_if_full : TextOut -> m TextOut;
+}
+
+// `format` runs in `Identity`, which keeps the whole text.
+impl Identity : TextWriter {
+    flush_if_full = |out| pure(out);
+}
+
+namespace Format {
+    // An action that writes text to the handle it is given. `printf` runs in it.
+    type _HandleWriter a = struct { _run : IOHandle -> IO a };
+}
+
+impl _HandleWriter : Functor {
+    map = |f, writer| _HandleWriter { _run : |handle| (writer.@_run)(handle).map(f) };
+}
+
+impl _HandleWriter : Monad {
+    pure = |x| _HandleWriter { _run : |_| pure(x) };
+    bind = |f, writer| _HandleWriter { _run : |handle| (writer.@_run)(handle).bind(|x| (f(x).@_run)(handle)) };
+}
+
+// Writes the text to the handle once it is longer than `_buffer_size`.
+impl _HandleWriter : TextWriter {
+    flush_if_full = |out| _HandleWriter { _run : |handle| (
+        let bytes = out.@_bytes;
+        if bytes.@size <= _buffer_size { pure(out) };
+        // Write errors are ignored, as in `print`.
+        write_bytes(handle, bytes).to_result;;
+        pure $ TextOut { _bytes : bytes.truncate(0) }
+    ) };
+}
+
+// A type whose values `format` and `printf` can write.
 //
-// A type that implements `ToString` can implement `Format` in one line:
+// `write_text` appends the text of a value to `out` and returns the new `out` in the monad `m`. To
+// implement it, write the parts of the value one by one:
 //
 // ```fix
 // # module DocTest;
@@ -198,38 +362,33 @@ namespace Format::TextOut {
 // #
 // # type Point = struct { x : I64, y : I64 };
 // #
-// # impl Point : ToString {
-// #     to_string = |p| "(" + p.@x.to_string + ", " + p.@y.to_string + ")";
-// # }
-// #
 // impl Point : Format {
-//     write_text = |p, out| out.write_text(p.to_string);
+//     write_text = |p, out| (
+//         let out = *out.write_text("(");
+//         let out = *out.write_text(p.@x);
+//         let out = *out.write_text(", ");
+//         let out = *out.write_text(p.@y);
+//         out.write_text(")")
+//     );
 // }
 // #
 // # main : IO () = assert_eq(|_|"", "{}".format((Point { x : 1, y : 2 },)), "(1, 2)");
 // ```
 //
-// Writing each part directly is faster, because it creates no intermediate string:
+// Calling `TextWriter::flush_if_full` flushes `out` if it is longer than the threshold: the text is
+// written out, or moved to a lower-level buffer. So when writing a large value, call
+// `flush_if_full` at suitable points to keep memory use low. For reference, `printf` and the other
+// output functions use a threshold of 8192 bytes. For example, the implementation of `Format` for
+// `Joined`, which also writes arrays and slices, calls it after each element.
 //
-// ```fix
-// # module DocTest;
-// # import Std.Experimental;
-// #
-// # type Point = struct { x : I64, y : I64 };
-// #
-// impl Point : Format {
-//     write_text = |p, out| out.write_text("(").write_text(p.@x).write_text(", ").write_text(p.@y).write_text(")");
-// }
-// #
-// # main : IO () = assert_eq(|_|"", "{}".format((Point { x : 1, y : 2 },)), "(1, 2)");
-// ```
+// The implementations in this module write the same text as `to_string`.
 trait a : Format {
     // Appends the text of `value` to `out`.
     //
     // # Parameters
     // * `value` - The value to write.
     // * `out` - The text written so far.
-    write_text : a -> TextOut -> TextOut;
+    write_text : [m : Monad, m : TextWriter] a -> TextOut -> m TextOut;
 }
 
 // The values that `format` writes into a template: `()`, or a tuple of values whose types
@@ -241,7 +400,7 @@ trait args : FormatArgs {
     // # Parameters
     // * `values` - The values.
     // * `cursor` - The template and how much of it has been written.
-    write_args : args -> TemplateCursor -> TemplateCursor;
+    write_args : [m : Monad, m : TextWriter] args -> TemplateCursor -> m TemplateCursor;
 }
 
 namespace FormatArgs {
@@ -251,33 +410,50 @@ namespace FormatArgs {
 }
 
 namespace FormatArgs::TemplateCursor {
+    // The capacity to start the text of `template` with: room for the template and for a few short
+    // values, so that a short text is written without growing the array.
+    //
+    // # Parameters
+    // * `template` - The template.
+    _initial_capacity : String -> I64 = |template| 2 * template.@size + 64;
+
+    // A cursor at the start of `template`. The text of the template is appended to `out`.
+    //
+    // # Parameters
+    // * `template` - The template.
+    // * `out` - The text written so far.
+    _start_template : String -> TextOut -> TemplateCursor = |template, out| (
+        TemplateCursor { _template : template, _at : 0, _out : out }
+    );
+
     // Writes the template text up to the next placeholder, then the text of `value` in place of the
-    // placeholder.
+    // placeholder, and calls `flush_if_full`.
     //
     // # Parameters
     // * `value` - The value to write in place of the placeholder.
     // * `cursor` - The template and how much of it has been written.
-    _put_next : [a : Format] a -> TemplateCursor -> TemplateCursor = |value, cursor| (
+    _put_next : [a : Format, m : Monad, m : TextWriter] a -> TemplateCursor -> m TemplateCursor = |value, cursor| (
         let TemplateCursor { _template : template, _at : at, _out : out } = cursor;
         let (at, out) = _write_literal(template, at, out);
         if at == template.@size {
             undefined("[Std.Experimental::format] The template has fewer placeholders than the values: \"" + template + "\"")
         };
-        TemplateCursor { _template : template, _at : at + 2, _out : out.write_text(value) }
+        let out = *out.write_text(value);
+        let out = *out.flush_if_full;
+        pure $ TemplateCursor { _template : template, _at : at + 2, _out : out }
     );
 
-    // Writes the rest of the template and returns the whole text.
+    // Writes the rest of the template and returns the text.
     //
     // # Parameters
     // * `cursor` - The template and how much of it has been written.
-    _finish : TemplateCursor -> String = |cursor| (
+    _finish : TemplateCursor -> TextOut = |cursor| (
         let TemplateCursor { _template : template, _at : at, _out : out } = cursor;
         let (at, out) = _write_literal(template, at, out);
         if at < template.@size {
             undefined("[Std.Experimental::format] The template has more placeholders than the values: \"" + template + "\"")
         };
-        // A `TextOut` contains no null byte, so the string ends at the null added here.
-        String { _data : out.@_bytes.push_back('\0') }
+        out
     );
 
     // Writes the text of `template` from byte `at` up to the next placeholder or the end. Each escape
@@ -314,7 +490,7 @@ namespace FormatArgs::TemplateCursor {
 }
 
 impl () : FormatArgs {
-    write_args = |_, cursor| cursor;
+    write_args = |_, cursor| pure(cursor);
 }
 
 // Writes `true` or `false`, as `to_string` does.
@@ -326,10 +502,7 @@ impl Bool : Format {
 }
 
 impl String : Format {
-    write_text = |s, out| (
-        // `append` copies the bytes of `s`, so removing the null afterwards does not change `s`.
-        TextOut { _bytes : out.@_bytes.append(s.get_bytes).pop_back }
-    );
+    write_text = |s, out| pure $ out._write_string(s);
 }
 
 // Writes `()`, as `to_string` does.
@@ -338,47 +511,47 @@ impl () : Format {
 }
 
 impl U8 : Format {
-    write_text = |v, out| out._write_decimal_integer(false, v.u64);
+    write_text = |v, out| pure $ out._write_decimal_integer(false, v.u64);
 }
 
 impl I8 : Format {
-    write_text = |v, out| out._write_signed_decimal_integer(v.i64);
+    write_text = |v, out| pure $ out._write_signed_decimal_integer(v.i64);
 }
 
 impl U16 : Format {
-    write_text = |v, out| out._write_decimal_integer(false, v.u64);
+    write_text = |v, out| pure $ out._write_decimal_integer(false, v.u64);
 }
 
 impl I16 : Format {
-    write_text = |v, out| out._write_signed_decimal_integer(v.i64);
+    write_text = |v, out| pure $ out._write_signed_decimal_integer(v.i64);
 }
 
 impl U32 : Format {
-    write_text = |v, out| out._write_decimal_integer(false, v.u64);
+    write_text = |v, out| pure $ out._write_decimal_integer(false, v.u64);
 }
 
 impl I32 : Format {
-    write_text = |v, out| out._write_signed_decimal_integer(v.i64);
+    write_text = |v, out| pure $ out._write_signed_decimal_integer(v.i64);
 }
 
 impl U64 : Format {
-    write_text = |v, out| out._write_decimal_integer(false, v);
+    write_text = |v, out| pure $ out._write_decimal_integer(false, v);
 }
 
 impl I64 : Format {
-    write_text = |v, out| out._write_signed_decimal_integer(v);
+    write_text = |v, out| pure $ out._write_signed_decimal_integer(v);
 }
 
 // Writes sixteen hexadecimal digits, as `to_string` does.
 impl Ptr : Format {
-    write_text = |v, out| out._write_address(v);
+    write_text = |v, out| pure $ out._write_address(v);
 }
 
 // Writes the shortest decimal text that reads back as the same number, as `to_string` does.
 impl F32 : Format {
     write_text = |v, out| (
         let (at, bytes) = out._reserve_to_write(F32::_shortest_text_max_length);
-        _finish_write $ bytes.F32::_write_shortest_text(at, v)
+        pure $ _finish_write $ bytes.F32::_write_shortest_text(at, v)
     );
 }
 
@@ -386,7 +559,7 @@ impl F32 : Format {
 impl F64 : Format {
     write_text = |v, out| (
         let (at, bytes) = out._reserve_to_write(F64::_shortest_text_max_length);
-        _finish_write $ bytes.F64::_write_shortest_text(at, v)
+        pure $ _finish_write $ bytes.F64::_write_shortest_text(at, v)
     );
 }
 
@@ -394,21 +567,21 @@ impl F64 : Format {
 impl [a : Format] Option a : Format {
     write_text = |opt, out| (
         if opt.is_none { out.write_text("none()") };
-        out.write_text("some(").write_text(opt.as_some).write_text(")")
+        out.write_text("some(").bind(write_text(opt.as_some)).bind(write_text(")"))
     );
 }
 
 // Writes `ok(x)` or `err(e)`, as `to_string` does.
 impl [e : Format, a : Format] Result e a : Format {
     write_text = |res, out| (
-        if res.is_ok { out.write_text("ok(").write_text(res.as_ok).write_text(")") };
-        out.write_text("err(").write_text(res.as_err).write_text(")")
+        if res.is_ok { out.write_text("ok(").bind(write_text(res.as_ok)).bind(write_text(")")) };
+        out.write_text("err(").bind(write_text(res.as_err)).bind(write_text(")"))
     );
 }
 
 // Writes the elements between `[` and `]`, separated by `, `, as `to_string` does.
 impl [a : Format] Array a : Format {
-    write_text = |arr, out| out.write_text("[").write_text(arr.with_separator(", ")).write_text("]");
+    write_text = |arr, out| out.write_text("[").bind(write_text(arr.to_iter.joined_with(", "))).bind(write_text("]"));
 }
 
 namespace Format {
@@ -454,7 +627,7 @@ impl WithPrecision F32 : Format {
         let precision = w.@_precision;
         let v = w.@_value;
         let (at, bytes) = out._reserve_to_write(F32::_fixed_text_max_length(precision));
-        _finish_write $ bytes.F32::_write_fixed_text(at, precision, v)
+        pure $ _finish_write $ bytes.F32::_write_fixed_text(at, precision, v)
     );
 }
 
@@ -463,53 +636,44 @@ impl WithPrecision F64 : Format {
         let precision = w.@_precision;
         let v = w.@_value;
         let (at, bytes) = out._reserve_to_write(F64::_fixed_text_max_length(precision));
-        _finish_write $ bytes.F64::_write_fixed_text(at, precision, v)
+        pure $ _finish_write $ bytes.F64::_write_fixed_text(at, precision, v)
     );
 }
 
 namespace Format {
-    // The elements of an array or of a slice, written with a separator between them. Created by
-    // `with_separator`.
-    type WithSeparator a = struct { _separator : String, _elements : Slice a };
+    // The elements of an iterator, written with a separator between them. Created by
+    // `Iterator::joined_with`.
+    type Joined it = struct { _separator : String, _elements : it };
 }
 
-namespace Array {
-    // Wraps `elements` so that `format` writes them with `separator` between them.
+namespace Iterator {
+    // Wraps `elements` so that `format` writes them with `separator` between them, as `String::join`
+    // joins strings.
     //
     // # Examples
     //
     // ```fix
-    // assert_eq(|_|"", "{}".format(([1, 2, 3].with_separator(", "),)), "1, 2, 3")
+    // assert_eq(|_|"", "{}".format(([1, 2, 3].to_iter.joined_with(", "),)), "1, 2, 3")
     // ```
     //
     // # Parameters
     // * `separator` - The text to write between two elements.
     // * `elements` - The elements.
-    with_separator : String -> Array a -> WithSeparator a = |separator, elements| WithSeparator { _separator : separator, _elements : elements.to_slice };
+    joined_with : String -> it -> Joined it = |separator, elements| Joined { _separator : separator, _elements : elements };
 }
 
-namespace Slice {
-    // Wraps `elements` so that `format` writes them with `separator` between them.
-    //
-    // # Examples
-    //
-    // ```fix
-    // assert_eq(|_|"", "{}".format(([1, 2, 3, 4].get_slice(1, 4).with_separator("-"),)), "2-3-4")
-    // ```
-    //
-    // # Parameters
-    // * `separator` - The text to write between two elements.
-    // * `elements` - The elements.
-    with_separator : String -> Slice a -> WithSeparator a = |separator, elements| WithSeparator { _separator : separator, _elements : elements };
-}
-
-impl [a : Format] WithSeparator a : Format {
-    write_text = |w, out| (
-        let separator = w.@_separator;
-        let Slice { _array : array, _begin : begin, _end : end } = w.@_elements;
-        if begin == end { out };
-        range(begin + 1, end).fold(out.write_text(array.@(begin)), |i, out|
-            out.write_text(separator).write_text(array.@(i))
+// Writes each element with `write_text`, and calls `flush_if_full` after it.
+impl [it : Iterator, Item it = a, a : Format] Joined it : Format {
+    write_text = |joined, out| (
+        let separator = joined.@_separator;
+        loop_m((joined.@_elements, out, true), |(elements, out, first)|
+            let next = elements.advance;
+            if next.is_none { break_m $ out };
+            let (elements, element) = next.as_some;
+            let out = if first { out } else { out._write_string(separator) };
+            let out = *out.write_text(element);
+            let out = *out.flush_if_full;
+            continue_m $ (elements, out, false)
         )
     );
 }
@@ -533,10 +697,11 @@ namespace Format {
     right_aligned_to : I64 -> a -> RightAligned a = |width, value| RightAligned { _width : width, _value : value };
 }
 
+// Writes the value in `Identity`, so that its whole text is in `out` when it is measured and moved.
 impl [a : Format] RightAligned a : Format {
-    write_text = |aligned, out| (
+    write_text = |aligned, out| pure $ (
         let start = out.@_bytes.@size;
-        let out = out.write_text(aligned.@_value);
+        let Identity { data : out } = out.write_text(aligned.@_value);
         let padding = aligned.@_width - out._count_code_points_from(start);
         if padding <= 0 { out };
         // Move the text `padding` bytes to the right, starting from its last byte, and then fill the
@@ -573,10 +738,11 @@ namespace Format {
     left_aligned_to : I64 -> a -> LeftAligned a = |width, value| LeftAligned { _width : width, _value : value };
 }
 
+// Writes the value in `Identity`, so that its whole text is in `out` when it is measured.
 impl [a : Format] LeftAligned a : Format {
-    write_text = |aligned, out| (
+    write_text = |aligned, out| pure $ (
         let start = out.@_bytes.@size;
-        let out = out.write_text(aligned.@_value);
+        let Identity { data : out } = out.write_text(aligned.@_value);
         out._write_spaces(aligned.@_width - out._count_code_points_from(start))
     );
 }
@@ -584,99 +750,99 @@ impl [a : Format] LeftAligned a : Format {
 // BEGIN tuple implementations. Generated by `fix run -- gen-tuples` in `tools`.
 
 impl [t0 : Format] (t0,) : Format {
-    write_text = |(x0,), out| out.write_text("(").write_text(x0).write_text(",)");
+    write_text = |(x0,), out| out.write_text("(").bind(write_text(x0)).bind(write_text(",)"));
 }
 
 impl [t0 : Format] (t0,) : FormatArgs {
-    write_args = |(x0,), cursor| cursor._put_next(x0);
+    write_args = |(x0,), cursor| pure(cursor).bind(_put_next(x0));
 }
 
 impl [t0 : Format, t1 : Format] (t0, t1) : Format {
-    write_text = |(x0, x1), out| out.write_text("(").write_text(x0).write_text(", ").write_text(x1).write_text(")");
+    write_text = |(x0, x1), out| out.write_text("(").bind(write_text(x0)).bind(write_text(", ")).bind(write_text(x1)).bind(write_text(")"));
 }
 
 impl [t0 : Format, t1 : Format] (t0, t1) : FormatArgs {
-    write_args = |(x0, x1), cursor| cursor._put_next(x0)._put_next(x1);
+    write_args = |(x0, x1), cursor| pure(cursor).bind(_put_next(x0)).bind(_put_next(x1));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format] (t0, t1, t2) : Format {
-    write_text = |(x0, x1, x2), out| out.write_text("(").write_text(x0).write_text(", ").write_text(x1).write_text(", ").write_text(x2).write_text(")");
+    write_text = |(x0, x1, x2), out| out.write_text("(").bind(write_text(x0)).bind(write_text(", ")).bind(write_text(x1)).bind(write_text(", ")).bind(write_text(x2)).bind(write_text(")"));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format] (t0, t1, t2) : FormatArgs {
-    write_args = |(x0, x1, x2), cursor| cursor._put_next(x0)._put_next(x1)._put_next(x2);
+    write_args = |(x0, x1, x2), cursor| pure(cursor).bind(_put_next(x0)).bind(_put_next(x1)).bind(_put_next(x2));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format] (t0, t1, t2, t3) : Format {
-    write_text = |(x0, x1, x2, x3), out| out.write_text("(").write_text(x0).write_text(", ").write_text(x1).write_text(", ").write_text(x2).write_text(", ").write_text(x3).write_text(")");
+    write_text = |(x0, x1, x2, x3), out| out.write_text("(").bind(write_text(x0)).bind(write_text(", ")).bind(write_text(x1)).bind(write_text(", ")).bind(write_text(x2)).bind(write_text(", ")).bind(write_text(x3)).bind(write_text(")"));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format] (t0, t1, t2, t3) : FormatArgs {
-    write_args = |(x0, x1, x2, x3), cursor| cursor._put_next(x0)._put_next(x1)._put_next(x2)._put_next(x3);
+    write_args = |(x0, x1, x2, x3), cursor| pure(cursor).bind(_put_next(x0)).bind(_put_next(x1)).bind(_put_next(x2)).bind(_put_next(x3));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format] (t0, t1, t2, t3, t4) : Format {
-    write_text = |(x0, x1, x2, x3, x4), out| out.write_text("(").write_text(x0).write_text(", ").write_text(x1).write_text(", ").write_text(x2).write_text(", ").write_text(x3).write_text(", ").write_text(x4).write_text(")");
+    write_text = |(x0, x1, x2, x3, x4), out| out.write_text("(").bind(write_text(x0)).bind(write_text(", ")).bind(write_text(x1)).bind(write_text(", ")).bind(write_text(x2)).bind(write_text(", ")).bind(write_text(x3)).bind(write_text(", ")).bind(write_text(x4)).bind(write_text(")"));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format] (t0, t1, t2, t3, t4) : FormatArgs {
-    write_args = |(x0, x1, x2, x3, x4), cursor| cursor._put_next(x0)._put_next(x1)._put_next(x2)._put_next(x3)._put_next(x4);
+    write_args = |(x0, x1, x2, x3, x4), cursor| pure(cursor).bind(_put_next(x0)).bind(_put_next(x1)).bind(_put_next(x2)).bind(_put_next(x3)).bind(_put_next(x4));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Format] (t0, t1, t2, t3, t4, t5) : Format {
-    write_text = |(x0, x1, x2, x3, x4, x5), out| out.write_text("(").write_text(x0).write_text(", ").write_text(x1).write_text(", ").write_text(x2).write_text(", ").write_text(x3).write_text(", ").write_text(x4).write_text(", ").write_text(x5).write_text(")");
+    write_text = |(x0, x1, x2, x3, x4, x5), out| out.write_text("(").bind(write_text(x0)).bind(write_text(", ")).bind(write_text(x1)).bind(write_text(", ")).bind(write_text(x2)).bind(write_text(", ")).bind(write_text(x3)).bind(write_text(", ")).bind(write_text(x4)).bind(write_text(", ")).bind(write_text(x5)).bind(write_text(")"));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Format] (t0, t1, t2, t3, t4, t5) : FormatArgs {
-    write_args = |(x0, x1, x2, x3, x4, x5), cursor| cursor._put_next(x0)._put_next(x1)._put_next(x2)._put_next(x3)._put_next(x4)._put_next(x5);
+    write_args = |(x0, x1, x2, x3, x4, x5), cursor| pure(cursor).bind(_put_next(x0)).bind(_put_next(x1)).bind(_put_next(x2)).bind(_put_next(x3)).bind(_put_next(x4)).bind(_put_next(x5));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Format, t6 : Format] (t0, t1, t2, t3, t4, t5, t6) : Format {
-    write_text = |(x0, x1, x2, x3, x4, x5, x6), out| out.write_text("(").write_text(x0).write_text(", ").write_text(x1).write_text(", ").write_text(x2).write_text(", ").write_text(x3).write_text(", ").write_text(x4).write_text(", ").write_text(x5).write_text(", ").write_text(x6).write_text(")");
+    write_text = |(x0, x1, x2, x3, x4, x5, x6), out| out.write_text("(").bind(write_text(x0)).bind(write_text(", ")).bind(write_text(x1)).bind(write_text(", ")).bind(write_text(x2)).bind(write_text(", ")).bind(write_text(x3)).bind(write_text(", ")).bind(write_text(x4)).bind(write_text(", ")).bind(write_text(x5)).bind(write_text(", ")).bind(write_text(x6)).bind(write_text(")"));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Format, t6 : Format] (t0, t1, t2, t3, t4, t5, t6) : FormatArgs {
-    write_args = |(x0, x1, x2, x3, x4, x5, x6), cursor| cursor._put_next(x0)._put_next(x1)._put_next(x2)._put_next(x3)._put_next(x4)._put_next(x5)._put_next(x6);
+    write_args = |(x0, x1, x2, x3, x4, x5, x6), cursor| pure(cursor).bind(_put_next(x0)).bind(_put_next(x1)).bind(_put_next(x2)).bind(_put_next(x3)).bind(_put_next(x4)).bind(_put_next(x5)).bind(_put_next(x6));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Format, t6 : Format, t7 : Format] (t0, t1, t2, t3, t4, t5, t6, t7) : Format {
-    write_text = |(x0, x1, x2, x3, x4, x5, x6, x7), out| out.write_text("(").write_text(x0).write_text(", ").write_text(x1).write_text(", ").write_text(x2).write_text(", ").write_text(x3).write_text(", ").write_text(x4).write_text(", ").write_text(x5).write_text(", ").write_text(x6).write_text(", ").write_text(x7).write_text(")");
+    write_text = |(x0, x1, x2, x3, x4, x5, x6, x7), out| out.write_text("(").bind(write_text(x0)).bind(write_text(", ")).bind(write_text(x1)).bind(write_text(", ")).bind(write_text(x2)).bind(write_text(", ")).bind(write_text(x3)).bind(write_text(", ")).bind(write_text(x4)).bind(write_text(", ")).bind(write_text(x5)).bind(write_text(", ")).bind(write_text(x6)).bind(write_text(", ")).bind(write_text(x7)).bind(write_text(")"));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Format, t6 : Format, t7 : Format] (t0, t1, t2, t3, t4, t5, t6, t7) : FormatArgs {
-    write_args = |(x0, x1, x2, x3, x4, x5, x6, x7), cursor| cursor._put_next(x0)._put_next(x1)._put_next(x2)._put_next(x3)._put_next(x4)._put_next(x5)._put_next(x6)._put_next(x7);
+    write_args = |(x0, x1, x2, x3, x4, x5, x6, x7), cursor| pure(cursor).bind(_put_next(x0)).bind(_put_next(x1)).bind(_put_next(x2)).bind(_put_next(x3)).bind(_put_next(x4)).bind(_put_next(x5)).bind(_put_next(x6)).bind(_put_next(x7));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Format, t6 : Format, t7 : Format, t8 : Format] (t0, t1, t2, t3, t4, t5, t6, t7, t8) : Format {
-    write_text = |(x0, x1, x2, x3, x4, x5, x6, x7, x8), out| out.write_text("(").write_text(x0).write_text(", ").write_text(x1).write_text(", ").write_text(x2).write_text(", ").write_text(x3).write_text(", ").write_text(x4).write_text(", ").write_text(x5).write_text(", ").write_text(x6).write_text(", ").write_text(x7).write_text(", ").write_text(x8).write_text(")");
+    write_text = |(x0, x1, x2, x3, x4, x5, x6, x7, x8), out| out.write_text("(").bind(write_text(x0)).bind(write_text(", ")).bind(write_text(x1)).bind(write_text(", ")).bind(write_text(x2)).bind(write_text(", ")).bind(write_text(x3)).bind(write_text(", ")).bind(write_text(x4)).bind(write_text(", ")).bind(write_text(x5)).bind(write_text(", ")).bind(write_text(x6)).bind(write_text(", ")).bind(write_text(x7)).bind(write_text(", ")).bind(write_text(x8)).bind(write_text(")"));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Format, t6 : Format, t7 : Format, t8 : Format] (t0, t1, t2, t3, t4, t5, t6, t7, t8) : FormatArgs {
-    write_args = |(x0, x1, x2, x3, x4, x5, x6, x7, x8), cursor| cursor._put_next(x0)._put_next(x1)._put_next(x2)._put_next(x3)._put_next(x4)._put_next(x5)._put_next(x6)._put_next(x7)._put_next(x8);
+    write_args = |(x0, x1, x2, x3, x4, x5, x6, x7, x8), cursor| pure(cursor).bind(_put_next(x0)).bind(_put_next(x1)).bind(_put_next(x2)).bind(_put_next(x3)).bind(_put_next(x4)).bind(_put_next(x5)).bind(_put_next(x6)).bind(_put_next(x7)).bind(_put_next(x8));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Format, t6 : Format, t7 : Format, t8 : Format, t9 : Format] (t0, t1, t2, t3, t4, t5, t6, t7, t8, t9) : Format {
-    write_text = |(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9), out| out.write_text("(").write_text(x0).write_text(", ").write_text(x1).write_text(", ").write_text(x2).write_text(", ").write_text(x3).write_text(", ").write_text(x4).write_text(", ").write_text(x5).write_text(", ").write_text(x6).write_text(", ").write_text(x7).write_text(", ").write_text(x8).write_text(", ").write_text(x9).write_text(")");
+    write_text = |(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9), out| out.write_text("(").bind(write_text(x0)).bind(write_text(", ")).bind(write_text(x1)).bind(write_text(", ")).bind(write_text(x2)).bind(write_text(", ")).bind(write_text(x3)).bind(write_text(", ")).bind(write_text(x4)).bind(write_text(", ")).bind(write_text(x5)).bind(write_text(", ")).bind(write_text(x6)).bind(write_text(", ")).bind(write_text(x7)).bind(write_text(", ")).bind(write_text(x8)).bind(write_text(", ")).bind(write_text(x9)).bind(write_text(")"));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Format, t6 : Format, t7 : Format, t8 : Format, t9 : Format] (t0, t1, t2, t3, t4, t5, t6, t7, t8, t9) : FormatArgs {
-    write_args = |(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9), cursor| cursor._put_next(x0)._put_next(x1)._put_next(x2)._put_next(x3)._put_next(x4)._put_next(x5)._put_next(x6)._put_next(x7)._put_next(x8)._put_next(x9);
+    write_args = |(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9), cursor| pure(cursor).bind(_put_next(x0)).bind(_put_next(x1)).bind(_put_next(x2)).bind(_put_next(x3)).bind(_put_next(x4)).bind(_put_next(x5)).bind(_put_next(x6)).bind(_put_next(x7)).bind(_put_next(x8)).bind(_put_next(x9));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Format, t6 : Format, t7 : Format, t8 : Format, t9 : Format, t10 : Format] (t0, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10) : Format {
-    write_text = |(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10), out| out.write_text("(").write_text(x0).write_text(", ").write_text(x1).write_text(", ").write_text(x2).write_text(", ").write_text(x3).write_text(", ").write_text(x4).write_text(", ").write_text(x5).write_text(", ").write_text(x6).write_text(", ").write_text(x7).write_text(", ").write_text(x8).write_text(", ").write_text(x9).write_text(", ").write_text(x10).write_text(")");
+    write_text = |(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10), out| out.write_text("(").bind(write_text(x0)).bind(write_text(", ")).bind(write_text(x1)).bind(write_text(", ")).bind(write_text(x2)).bind(write_text(", ")).bind(write_text(x3)).bind(write_text(", ")).bind(write_text(x4)).bind(write_text(", ")).bind(write_text(x5)).bind(write_text(", ")).bind(write_text(x6)).bind(write_text(", ")).bind(write_text(x7)).bind(write_text(", ")).bind(write_text(x8)).bind(write_text(", ")).bind(write_text(x9)).bind(write_text(", ")).bind(write_text(x10)).bind(write_text(")"));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Format, t6 : Format, t7 : Format, t8 : Format, t9 : Format, t10 : Format] (t0, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10) : FormatArgs {
-    write_args = |(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10), cursor| cursor._put_next(x0)._put_next(x1)._put_next(x2)._put_next(x3)._put_next(x4)._put_next(x5)._put_next(x6)._put_next(x7)._put_next(x8)._put_next(x9)._put_next(x10);
+    write_args = |(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10), cursor| pure(cursor).bind(_put_next(x0)).bind(_put_next(x1)).bind(_put_next(x2)).bind(_put_next(x3)).bind(_put_next(x4)).bind(_put_next(x5)).bind(_put_next(x6)).bind(_put_next(x7)).bind(_put_next(x8)).bind(_put_next(x9)).bind(_put_next(x10));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Format, t6 : Format, t7 : Format, t8 : Format, t9 : Format, t10 : Format, t11 : Format] (t0, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11) : Format {
-    write_text = |(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11), out| out.write_text("(").write_text(x0).write_text(", ").write_text(x1).write_text(", ").write_text(x2).write_text(", ").write_text(x3).write_text(", ").write_text(x4).write_text(", ").write_text(x5).write_text(", ").write_text(x6).write_text(", ").write_text(x7).write_text(", ").write_text(x8).write_text(", ").write_text(x9).write_text(", ").write_text(x10).write_text(", ").write_text(x11).write_text(")");
+    write_text = |(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11), out| out.write_text("(").bind(write_text(x0)).bind(write_text(", ")).bind(write_text(x1)).bind(write_text(", ")).bind(write_text(x2)).bind(write_text(", ")).bind(write_text(x3)).bind(write_text(", ")).bind(write_text(x4)).bind(write_text(", ")).bind(write_text(x5)).bind(write_text(", ")).bind(write_text(x6)).bind(write_text(", ")).bind(write_text(x7)).bind(write_text(", ")).bind(write_text(x8)).bind(write_text(", ")).bind(write_text(x9)).bind(write_text(", ")).bind(write_text(x10)).bind(write_text(", ")).bind(write_text(x11)).bind(write_text(")"));
 }
 
 impl [t0 : Format, t1 : Format, t2 : Format, t3 : Format, t4 : Format, t5 : Format, t6 : Format, t7 : Format, t8 : Format, t9 : Format, t10 : Format, t11 : Format] (t0, t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11) : FormatArgs {
-    write_args = |(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11), cursor| cursor._put_next(x0)._put_next(x1)._put_next(x2)._put_next(x3)._put_next(x4)._put_next(x5)._put_next(x6)._put_next(x7)._put_next(x8)._put_next(x9)._put_next(x10)._put_next(x11);
+    write_args = |(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11), cursor| pure(cursor).bind(_put_next(x0)).bind(_put_next(x1)).bind(_put_next(x2)).bind(_put_next(x3)).bind(_put_next(x4)).bind(_put_next(x5)).bind(_put_next(x6)).bind(_put_next(x7)).bind(_put_next(x8)).bind(_put_next(x9)).bind(_put_next(x10)).bind(_put_next(x11));
 }
 
 // END tuple implementations.
@@ -850,7 +1016,7 @@ impl [a : ToString] Slice a : ToString {
 
 // Writes a slice the same way as an array: `[1, 2, 3]`.
 impl [a : Format] Slice a : Format {
-    write_text = |slice, out| out.write_text("[").write_text(slice.with_separator(", ")).write_text("]");
+    write_text = |slice, out| out.write_text("[").bind(write_text(slice.to_iter.joined_with(", "))).bind(write_text("]"));
 }
 
 // Two slices are equal if they have equal elements in the same order.
@@ -950,7 +1116,7 @@ impl StringSlice : Format {
         let size = out.@_bytes.@size;
         // The added bytes are not initialized; the copy fills all of them.
         let bytes = out._reserve_to_append(end - begin)._unsafe_grow_size(size + end - begin);
-        TextOut { _bytes : bytes._unsafe_copy_range_bounds_unchecked(slice.@_string.get_bytes, begin, end, size) }
+        pure $ TextOut { _bytes : bytes._unsafe_copy_range_bounds_unchecked(slice.@_string.get_bytes, begin, end, size) }
     );
 }
 

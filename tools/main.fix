@@ -75,17 +75,17 @@ tuple_impls : I64 -> String = |size| (
     let constraints = names("t").map(|t| t + " : Format").join(", ");
     let tuple_type = "(" + names("t").join(", ") + close;
     let pattern = "(" + names("x").join(", ") + close;
-    let elements = names("x").map(|x| ".write_text(" + x + ")").join(".write_text(\", \")");
-    let puts = names("x").map(|x| "._put_next(" + x + ")").concat_iter;
+    let elements = names("x").map(|x| ".bind(write_text(" + x + "))").join(".bind(write_text(\", \"))");
+    let puts = names("x").map(|x| ".bind(_put_next(" + x + "))").concat_iter;
     [
         "",
         // `Format` writes a tuple as `to_string` does: `(x0, x1)`, or `(x0,)` for one element.
         "impl [" + constraints + "] " + tuple_type + " : Format {",
-        "    write_text = |" + pattern + ", out| out.write_text(\"(\")" + elements + ".write_text(\"" + close + "\");",
+        "    write_text = |" + pattern + ", out| out.write_text(\"(\")" + elements + ".bind(write_text(\"" + close + "\"));",
         "}",
         "",
         "impl [" + constraints + "] " + tuple_type + " : FormatArgs {",
-        "    write_args = |" + pattern + ", cursor| cursor" + puts + ";",
+        "    write_args = |" + pattern + ", cursor| pure(cursor)" + puts + ";",
         "}"
     ].to_iter.join("\n")
 );

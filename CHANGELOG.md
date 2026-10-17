@@ -1,5 +1,17 @@
 # Change Log
 
+## [0.5.0] - 2026-10-17
+
+### Added
+
+- #11, #12: `IO::printf`, `IO::printfln`, `IO::eprintf` and `IO::eprintfln` format values into a template, as `format` does, and write the result to the standard output or the standard error. They write the text in parts, so a long array is never held in memory as one text. `Debug::debug_printf`, `Debug::debug_printfln`, `Debug::debug_eprintf` and `Debug::debug_eprintfln` do the same outside `IO` and flush, like `debug_print`.
+- #11, #12: The trait `TextWriter`: the monad in which `Format::write_text` runs. Its method `flush_if_full` writes the text out once it is long enough.
+
+### Changed
+
+- #11, #12: `Format::write_text` now runs in a monad, so that one implementation serves both `format` and `printf`. Its type is now `[m : Monad, m : TextWriter] a -> TextOut -> m TextOut`. Rewrite `|p, out| out.write_text("(").write_text(p.@x).write_text(")")` as `|p, out| (let out = *out.write_text("("); let out = *out.write_text(p.@x); out.write_text(")"))`.
+- #12: `Array::with_separator` and `Slice::with_separator` are replaced by `Iterator::joined_with`, named after `String::join`. Write `arr.to_iter.joined_with(", ")`. It takes any iterator, so the elements need not be in an array. The type it returns is `Format::Joined`.
+
 ## [0.4.0] - 2026-10-13
 
 ### Added
