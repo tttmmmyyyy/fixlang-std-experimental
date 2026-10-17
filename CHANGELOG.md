@@ -4,12 +4,12 @@
 
 ### Added
 
-- #11: `IO::printf`, `IO::printfln`, `IO::eprintf` and `IO::eprintfln` write the text that `format` makes to the standard output or the standard error. They write it out as they go, so the text of a long array is not held in memory as a whole. `Debug::debug_printf`, `Debug::debug_printfln`, `Debug::debug_eprintf` and `Debug::debug_eprintfln` write it and flush, as `debug_print` does.
-- #11: The trait `TextWriter`, the monad that `Format::write_text` writes in. Its method `flush_if_full` writes the text out once enough of it is waiting.
+- #11, #12: `IO::printf`, `IO::printfln`, `IO::eprintf` and `IO::eprintfln` write the text that `format` makes to the standard output or the standard error. They write it out as they go, so the text of a long array is not held in memory as a whole. `Debug::debug_printf`, `Debug::debug_printfln`, `Debug::debug_eprintf` and `Debug::debug_eprintfln` write it and flush, as `debug_print` does.
+- #11, #12: The trait `TextWriter`, the monad that `Format::write_text` writes in. Its method `flush_if_full` writes the text out once enough of it is waiting.
 
 ### Changed
 
-- #11: `Format::write_text` writes in a monad, so that the same implementation serves `format` and `printf`. Its type is now `[m : Monad, m : TextWriter] a -> TextOut -> m TextOut`. Rewrite `|p, out| out.write_text("(").write_text(p.@x).write_text(")")` as `|p, out| (let out = *out.write_text("("); let out = *out.write_text(p.@x); out.write_text(")"))`.
+- #11, #12: `Format::write_text` writes in a monad, so that the same implementation serves `format` and `printf`. Its type is now `[m : Monad, m : TextWriter] a -> TextOut -> m TextOut`. Rewrite `|p, out| out.write_text("(").write_text(p.@x).write_text(")")` as `|p, out| (let out = *out.write_text("("); let out = *out.write_text(p.@x); out.write_text(")"))`.
 
 ## [0.4.0] - 2026-10-13
 
