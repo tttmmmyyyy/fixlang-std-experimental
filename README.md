@@ -4,32 +4,6 @@ The module `Std.Experimental` for the [Fix programming language](https://github.
 
 ## Contents
 
-- `String::format` replaces the placeholders `{}` in a template with values, which may have different types. Each value is written directly into the result, so `format` creates no intermediate string for each value.
-
-  ```
-  "{} + {} = {}".format((1, 2.5, "three"))   // "1 + 2.5 = three"
-  ```
-
-- `IO::printf` and `IO::printfln` write the same text to the standard output. `IO::eprintf` and `IO::eprintfln` write to the standard error. `Debug::debug_printf` and the others do the same outside `IO` and flush, like `debug_print`.
-
-  ```
-  "x = {}, y = {}".printfln((1, [2, 3]))     // prints "x = 1, y = [2, 3]"
-  ```
-
-- `IO::write_format` writes the same text to any `IOHandle`, such as a file, and returns the error of a write that fails as an `IOFail`.
-
-  ```
-  write_format(handle, (1, 2.5), "{} + {}\n")   // writes "1 + 2.5" and a newline to `handle`
-  ```
-
-- The trait `Format`. Implement it for a type so that `format` and `printf` can write its values.
-- Wrappers that change how a value is written: `F32::with_precision`, `F64::with_precision`, `F32::with_exp_precision`, `F64::with_exp_precision`, `Iterator::joined_with`, `Format::right_aligned_to`, `Format::left_aligned_to` and `Format::zero_padded_to`.
-
-  ```
-  "[{}]".format((3.14159.with_precision(2_U8).right_aligned_to(6),))   // "[  3.14]"
-  "{}:{}".format((9.zero_padded_to(2), 5.zero_padded_to(2)))           // "09:05"
-  ```
-
 - The types `Slice a` and `StringSlice`: a part of an array and a part of a string. `Array::get_slice` and `String::get_slice` take one without copying the elements, where `get_sub` copies them. `to_string` and `format` write a `Slice a` the same way as an array, and a `StringSlice` as its text.
 
   ```
@@ -38,6 +12,8 @@ The module `Std.Experimental` for the [Fix programming language](https://github.
   "abc,def".get_slice(4, 7).to_string          // "def"
   "<{}>".format(("abc,def".get_slice(4, 7),))  // "<def>"
   ```
+
+`String::format`, `IO::printf` and the trait `Format`, which versions before 0.7.0 had, are now in `Std`.
 
 The full list is in [docs/Std.Experimental.md](docs/Std.Experimental.md).
 
@@ -48,7 +24,7 @@ Add the dependency to your project:
 ```toml
 [[dependencies]]
 name = "std-experimental"
-version = "0.6.0"
+version = "0.7.0"
 git = { url = "https://github.com/tttmmmyyyy/fixlang-std-experimental.git" }
 ```
 
@@ -58,7 +34,7 @@ Then import the module:
 module Main;
 import Std.Experimental;
 
-main : IO () = println("x = {}".format((42,)));
+main : IO () = println([1, 2, 3, 4].get_slice(1, 3).to_string);
 ```
 
 ## Dependence on the compiler
@@ -68,5 +44,5 @@ This library calls functions of the Fix runtime and private values of `Std`, whi
 ## Development
 
 - `fix test` runs the tests.
-- In `tools`, `fix run -- test-aborts` checks that `format` aborts the program when the template does not match the values and that `Slice::@` aborts it for an index outside the slice, and `fix run -- gen-tuples` generates the implementations for tuples in `std_experimental.fix`. The first run needs `--allow-preliminary-commands`, because the dependency `subprocess` runs `make` before it is built.
+- In `tools`, `fix run -- test-aborts` checks that `Slice::@` aborts the program for an index outside the slice. The first run needs `--allow-preliminary-commands`, because the dependency `subprocess` runs `make` before it is built.
 - `fix docs -m Std.Experimental -o docs` generates the documentation.

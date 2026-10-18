@@ -1,5 +1,15 @@
 # Change Log
 
+## [0.7.0] - 2026-10-18
+
+### Removed
+
+- `String::format`, the `printf` family, `IO::write_format`, the traits `Format`, `TextWriter` and `FormatArgs`, and the wrappers such as `with_precision` and `joined_with` are removed, since `Std` now has them with the same names and behavior (tttmmmyyyy/fixlang#885). Use those of `Std`; for a program that imports them by name from `Std.Experimental`, import them from `Std` instead. This version needs a Fix whose `Std` has them.
+
+### Changed
+
+- `Slice a` and `StringSlice` now implement the `Format` of `Std`.
+
 ## [0.6.0] - 2026-10-18
 
 ### Added
