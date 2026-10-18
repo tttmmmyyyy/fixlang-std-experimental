@@ -16,11 +16,18 @@ The module `Std.Experimental` for the [Fix programming language](https://github.
   "x = {}, y = {}".printfln((1, [2, 3]))     // prints "x = 1, y = [2, 3]"
   ```
 
+- `IO::write_format` writes the same text to any `IOHandle`, such as a file, and returns the error of a write that fails as an `IOFail`.
+
+  ```
+  write_format(handle, (1, 2.5), "{} + {}\n")   // writes "1 + 2.5" and a newline to `handle`
+  ```
+
 - The trait `Format`. Implement it for a type so that `format` and `printf` can write its values.
-- Wrappers that change how a value is written: `F32::with_precision`, `F64::with_precision`, `Iterator::joined_with`, `Format::right_aligned_to` and `Format::left_aligned_to`.
+- Wrappers that change how a value is written: `F32::with_precision`, `F64::with_precision`, `F32::with_exp_precision`, `F64::with_exp_precision`, `Iterator::joined_with`, `Format::right_aligned_to`, `Format::left_aligned_to` and `Format::zero_padded_to`.
 
   ```
   "[{}]".format((3.14159.with_precision(2_U8).right_aligned_to(6),))   // "[  3.14]"
+  "{}:{}".format((9.zero_padded_to(2), 5.zero_padded_to(2)))           // "09:05"
   ```
 
 - The types `Slice a` and `StringSlice`: a part of an array and a part of a string. `Array::get_slice` and `String::get_slice` take one without copying the elements, where `get_sub` copies them. `to_string` and `format` write a `Slice a` the same way as an array, and a `StringSlice` as its text.
@@ -41,7 +48,7 @@ Add the dependency to your project:
 ```toml
 [[dependencies]]
 name = "std-experimental"
-version = "0.5.0"
+version = "0.6.0"
 git = { url = "https://github.com/tttmmmyyyy/fixlang-std-experimental.git" }
 ```
 

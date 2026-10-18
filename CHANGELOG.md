@@ -1,5 +1,14 @@
 # Change Log
 
+## [0.6.0] - 2026-10-18
+
+### Added
+
+- `IO::write_format` formats values into a template, as `format` does, and writes the result to any `IOHandle`, such as a file. It writes the text in parts, as `printf` does. If a write fails, the rest is not written, and the error is returned as an `IOFail`.
+- `I128` and `U128` now implement `Format`.
+- `F32::with_exp_precision` and `F64::with_exp_precision` make `format` write a number with a power of ten, as `to_string_exp_precision` does: `"{}".format((123.456.with_exp_precision(2_U8),))` is `"1.23e2"`.
+- `Format::zero_padded_to` makes `format` pad the text of a value with `0` to a width, after a leading `-`: `"{}".format(((-5).zero_padded_to(3),))` is `"-05"`.
+
 ## [0.5.0] - 2026-10-17
 
 ### Added

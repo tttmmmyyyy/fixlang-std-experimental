@@ -1,13 +1,14 @@
 # Std.Experimental
 
-Defined in std-experimental@0.5.0
+Defined in std-experimental@0.6.0
 
 The module `Std.Experimental` contains additions to `Std` whose design is not settled yet.
 Anything here may change or be removed in any version. When its design settles, it moves into
 `Std`.
 
 `String::format` fills the placeholders `{}` of a template with values of any types that
-implement `Format`. `IO::printf` writes the same text to the standard output. A wrapper such as
+implement `Format`. `IO::printf` writes the same text to the standard output, and
+`IO::write_format` writes it to any handle, such as a file. A wrapper such as
 `with_precision` or `right_aligned_to` changes how a value is written, and one wrapper can wrap
 another:
 
@@ -120,6 +121,24 @@ NOTE: This function is not pure and should only be used for temporary debugging 
 
 ### namespace Std.Experimental::F32
 
+#### with_exp_precision
+
+Type: `Std::U8 -> Std::F32 -> Std.Experimental::Format::WithExpPrecision Std::F32`
+
+Wraps `v` so that `format` writes it with one digit before the decimal point, `precision`
+digits after it, and a power of ten, as `F32::to_string_exp_precision` does.
+
+##### Examples
+
+```fix
+assert_eq(|_|"", "{}".format((123.456_F32.with_exp_precision(2_U8),)), "1.23e2")
+```
+
+##### Parameters
+
+* `precision` - The number of digits after the decimal point.
+* `v` - The number.
+
 #### with_precision
 
 Type: `Std::U8 -> Std::F32 -> Std.Experimental::Format::WithPrecision Std::F32`
@@ -139,6 +158,24 @@ assert_eq(|_|"", "{}".format((3.14159_F32.with_precision(2_U8),)), "3.14")
 * `v` - The number.
 
 ### namespace Std.Experimental::F64
+
+#### with_exp_precision
+
+Type: `Std::U8 -> Std::F64 -> Std.Experimental::Format::WithExpPrecision Std::F64`
+
+Wraps `v` so that `format` writes it with one digit before the decimal point, `precision`
+digits after it, and a power of ten, as `F64::to_string_exp_precision` does.
+
+##### Examples
+
+```fix
+assert_eq(|_|"", "{}".format((123.456.with_exp_precision(2_U8),)), "1.23e2")
+```
+
+##### Parameters
+
+* `precision` - The number of digits after the decimal point.
+* `v` - The number.
 
 #### with_precision
 
@@ -209,6 +246,26 @@ Appends the text of `value` to `out`.
 * `value` - The value to write.
 * `out` - The text written so far.
 
+#### zero_padded_to
+
+Type: `Std::I64 -> a -> Std.Experimental::Format::ZeroPadded a`
+
+Wraps `value` so that `format` pads its text with `0` to `width` Unicode code points. The
+zeros go after the `-` that the text starts with, if it starts with one, and before the text
+otherwise. A text that already has `width` code points or more is written unchanged.
+
+##### Examples
+
+```fix
+assert_eq(|_|"", "{}:{}".format((9.zero_padded_to(2), 5.zero_padded_to(2))), "09:05");;
+assert_eq(|_|"", "{}".format(((-5).zero_padded_to(3),)), "-05")
+```
+
+##### Parameters
+
+* `width` - The minimum width, in Unicode code points.
+* `value` - The value to write.
+
 ### namespace Std.Experimental::FormatArgs
 
 #### write_args
@@ -275,6 +332,27 @@ Same as `printf`, but adds a newline at the end.
 
 ##### Parameters
 
+* `values` - The values to write, in order.
+* `template` - The template.
+
+#### write_format
+
+Type: `[args : Std.Experimental::FormatArgs] Std::IO::IOHandle -> args -> Std::String -> Std::IO::IOFail ()`
+
+Formats `values` into `template`, as `format` does, and writes the result to `handle`.
+
+The text is written as `printf` writes it, so a long text is never held in memory as one
+text. If a write fails, the rest of the text is not written, and the error is returned.
+
+##### Examples
+
+```fix
+main : IO () = write_format(stdout, (1, 2.5), "{} + {}\n").try(eprintln);
+```
+
+##### Parameters
+
+* `handle` - The handle to write to.
 * `values` - The values to write, in order.
 * `template` - The template.
 
@@ -588,12 +666,27 @@ Defined as: `type TextOut = unbox struct { ...fields... }`
 Text that has been written but not yet flushed. `Format::write_text` appends to it, and
 `TextWriter::flush_if_full` flushes it.
 
+#### WithExpPrecision
+
+Defined as: `type WithExpPrecision a = unbox struct { ...fields... }`
+
+A floating-point number written with one digit before the decimal point, a fixed number of
+digits after it, and a power of ten. Created by `F32::with_exp_precision` or
+`F64::with_exp_precision`.
+
 #### WithPrecision
 
 Defined as: `type WithPrecision a = unbox struct { ...fields... }`
 
 A floating-point number written with a fixed number of digits after the decimal point. Created by
 `F32::with_precision` or `F64::with_precision`.
+
+#### ZeroPadded
+
+Defined as: `type ZeroPadded a = unbox struct { ...fields... }`
+
+A value padded with zeros on the left to a width, after its minus sign if it has one. Created
+by `zero_padded_to`.
 
 ### namespace Std.Experimental::FormatArgs
 
@@ -750,9 +843,17 @@ Writes the value in `Identity`, so that its whole text is in `out` when it is me
 
 Writes the value in `Identity`, so that its whole text is in `out` when it is measured and moved.
 
+### impl `Std.Experimental::Format::WithExpPrecision Std::F32 : Std.Experimental::Format`
+
+### impl `Std.Experimental::Format::WithExpPrecision Std::F64 : Std.Experimental::Format`
+
 ### impl `Std.Experimental::Format::WithPrecision Std::F32 : Std.Experimental::Format`
 
 ### impl `Std.Experimental::Format::WithPrecision Std::F64 : Std.Experimental::Format`
+
+### impl `[a : Std.Experimental::Format] Std.Experimental::Format::ZeroPadded a : Std.Experimental::Format`
+
+Writes the value in `Identity`, so that its whole text is in `out` when it is measured and moved.
 
 ### impl `[a : Std.Experimental::Format] Std.Experimental::Slice a : Std.Experimental::Format`
 
@@ -794,6 +895,8 @@ Writes the shortest decimal text that reads back as the same number, as `to_stri
 
 Writes the shortest decimal text that reads back as the same number, as `to_string` does.
 
+### impl `Std::I128 : Std.Experimental::Format`
+
 ### impl `Std::I16 : Std.Experimental::Format`
 
 ### impl `Std::I32 : Std.Experimental::Format`
@@ -819,6 +922,8 @@ Writes sixteen hexadecimal digits, as `to_string` does.
 Writes `ok(x)` or `err(e)`, as `to_string` does.
 
 ### impl `Std::String : Std.Experimental::Format`
+
+### impl `Std::U128 : Std.Experimental::Format`
 
 ### impl `Std::U16 : Std.Experimental::Format`
 
