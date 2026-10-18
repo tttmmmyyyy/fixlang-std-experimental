@@ -1,16 +1,22 @@
 module Test;
 
 import Std::{
-    undefined, Array, F32, F64, I64, IO, Identity, Option, Ptr, Result, String, ToString, 
-    IO::{IOHandle, read_string, write_string, IOFail::try, IOHandle::from_file_ptr}, Monad::bind, 
+    undefined, Array, F32, F64, I128, I64, IO, Identity, Option, Ptr, Result, String, ToString, U128, 
+    IO::{IOHandle, read_string, stdin, write_string, IOFail::to_result, IOFail::try, IOHandle::from_file_ptr}, Monad::bind, 
     Array::{@, @size, borrow_elements, fill, from_map, to_iter}, String::get_bytes, Iterator::to_array, 
     Debug::assert_eq, F32::{infinity, quiet_nan, to_string_precision}, 
-    F64::{infinity, quiet_nan, to_string_precision}, Iterator::{fold, fold_m, map, range}, Monad::pure, 
-    Option::{none, some}, Result::{err, ok}, String::{@size, get_sub, join}, ToString::to_string, ToU8::u8
+    F32::to_string_exp_precision, F64::{infinity, quiet_nan, to_string_exp_precision, to_string_precision}, 
+    Iterator::{fold, fold_m, map, range}, Monad::pure, Option::{none, some}, Result::{err, is_err, ok}, 
+    String::{@size, get_sub, join}, ToString::to_string, ToU8::u8, I128::{maximum, minimum}, U128::maximum
 };
 import Std.Experimental::{
-    Format, FormatArgs, Array::{get_slice, to_slice}, Iterator::joined_with, F32::with_precision, F64::with_precision, 
-    Format::{TextOut, _HandleWriter, _buffer_size, TextOut::@_bytes, _HandleWriter::@_run, left_aligned_to, right_aligned_to, write_text}, IO::_write_format, TextWriter::flush_if_full, 
+    Format, FormatArgs, Array::{get_slice, to_slice}, Iterator::joined_with, 
+    F32::{with_exp_precision, with_precision}, F64::{with_exp_precision, with_precision}, 
+    Format::{
+        TextOut, _HandleWriter, _IOFailWriter, _buffer_size, TextOut::@_bytes, _HandleWriter::@_run, 
+        _IOFailWriter::@_run, left_aligned_to, right_aligned_to, write_text, zero_padded_to
+    }, 
+    IO::{_write_format, write_format}, TextWriter::flush_if_full, 
     Slice::{@, @array, @begin, @end, @size, get_slice, to_array, to_iter}, 
     String::{format, get_slice, to_slice}, StringSlice::{@size, get_bytes, get_slice}
 };
@@ -19,11 +25,14 @@ test : IO () = (
     test_placeholders;;
     test_same_text_as_to_string;;
     test_with_precision;;
+    test_with_exp_precision;;
     test_joined_with;;
     test_aligned;;
+    test_zero_padded;;
     test_user_type;;
     test_shared_out;;
     test_write_format;;
+    test_write_format_to_handle;;
     test_flush_if_full;;
     test_slice_ranges;;
     test_slice_reads;;
@@ -81,6 +90,12 @@ test_same_text_as_to_string : IO () = (
     check_to_string("U64 max", 18446744073709551615_U64);;
     check_to_string("I64 min", -9223372036854775808);; check_to_string("I64 max", 9223372036854775807);;
     check_to_string("I64 zero", 0);;
+    check_to_string("U128 zero", 0_U128);; check_to_string("U128 max", U128::maximum);;
+    check_to_string("U128 above U64", 18446744073709551616_U128);;
+    check_to_string("U128 power of ten", 10000000000000000000_U128);;
+    check_to_string("I128 min", I128::minimum);; check_to_string("I128 max", I128::maximum);;
+    check_to_string("I128 below I64", -18446744073709551616_I128);;
+    check_to_string("I128 small", -7_I128);;
     check_to_string("null pointer", nullptr);;
     check_to_string("F32 zero", 0.0_F32);; check_to_string("F32 negative zero", -0.0_F32);;
     check_to_string("F32 tenth", 0.1_F32);; check_to_string("F32 least", -3.4028235e38_F32);;
@@ -125,6 +140,23 @@ test_with_precision : IO () = (
     ))
 );
 
+// Tests that `with_exp_precision` writes the same text as `to_string_exp_precision`, for `F32` and
+// `F64`, at every precision, including the largest and the subnormal values, and those that are not
+// finite.
+test_with_exp_precision : IO () = (
+    let f32s = [-3.4028235e38_F32, 123.456_F32, -0.0_F32, 1.0e-45_F32, F32::infinity, F32::quiet_nan];
+    let f64s = [-1.7976931348623157e308, 123.456, -0.0, 5.0e-324, -F64::infinity, F64::quiet_nan];
+    range(0, 256).fold_m((), |p, _| (
+        let prec = p.u8;
+        f32s.to_iter.fold_m((), |v, _|
+            assert_eq(|_|"F32 " + v.to_string + " " + p.to_string, "[{}]".format((v.with_exp_precision(prec),)), "[" + v.to_string_exp_precision(prec) + "]")
+        );;
+        f64s.to_iter.fold_m((), |v, _|
+            assert_eq(|_|"F64 " + v.to_string + " " + p.to_string, "[{}]".format((v.with_exp_precision(prec),)), "[" + v.to_string_exp_precision(prec) + "]")
+        )
+    ))
+);
+
 // Tests that `joined_with` writes the separator between elements, for zero, one and many
 // elements, and for an empty separator.
 test_joined_with : IO () = (
@@ -155,6 +187,25 @@ test_aligned : IO () = (
     assert_eq(|_|"left wider", "[{}]".format(("toolong".left_aligned_to(3),)), "[toolong]");;
     assert_eq(|_|"left multibyte", "[{}]".format(("あい".left_aligned_to(4),)), "[あい  ]");;
     assert_eq(|_|"two in a row", "{}{}".format((1.right_aligned_to(3), 2.left_aligned_to(3))), "  12  ");;
+    pure()
+);
+
+// Tests that `zero_padded_to` pads the text with `0` to the width in code points, after the `-` a
+// negative number starts with. A text of the width or longer is unchanged, and the value can be
+// another wrapper or a value whose text is not a number. Some cases write other text first, to check
+// that the padding goes where the value starts.
+test_zero_padded : IO () = (
+    assert_eq(|_|"narrower", "ab[{}]".format((9.zero_padded_to(3),)), "ab[009]");;
+    assert_eq(|_|"as wide", "[{}]".format((123.zero_padded_to(3),)), "[123]");;
+    assert_eq(|_|"wider", "[{}]".format((12345.zero_padded_to(3),)), "[12345]");;
+    assert_eq(|_|"negative", "ab[{}]".format(((-5).zero_padded_to(4),)), "ab[-005]");;
+    assert_eq(|_|"negative as wide", "[{}]".format(((-5).zero_padded_to(2),)), "[-5]");;
+    assert_eq(|_|"I128 min", "{}".format((I128::minimum.zero_padded_to(42),)), "-00170141183460469231731687303715884105728");;
+    assert_eq(|_|"float", "[{}]".format(((-3.5).zero_padded_to(6),)), "[-003.5]");;
+    assert_eq(|_|"wrapper", "[{}]".format((3.14159.with_precision(2_U8).zero_padded_to(7),)), "[0003.14]");;
+    assert_eq(|_|"string", "[{}]".format(("ab".zero_padded_to(4),)), "[00ab]");;
+    assert_eq(|_|"empty", "[{}]".format(("".zero_padded_to(2),)), "[00]");;
+    assert_eq(|_|"inside right_aligned_to", "[{}]".format((7.zero_padded_to(3).right_aligned_to(5),)), "[  007]");;
     pure()
 );
 
@@ -249,8 +300,25 @@ test_write_format : IO () = (
     pure()
 );
 
+// Tests that `write_format` writes the same text as `format`, also where the text is long enough to
+// be written out many times along the way, and that it returns the error of a write that fails,
+// both for a short text and for one written out along the way.
+test_write_format_to_handle : IO () = (
+    let many = Array::from_map(10000, |i| i);
+    let written = *written_to_file(|h| write_format(h, (1, "two"), "{} and {}").try(|e| undefined(e)));
+    assert_eq(|_|"short", written, "1 and two");;
+    let written = *written_to_file(|h| write_format(h, (many,), "<{}>").try(|e| undefined(e)));
+    assert_eq(|_|"long", written, "<{}>".format((many,)));;
+    let short = *write_format(stdin, (1,), "{}").to_result;
+    assert_eq(|_|"short: the error is returned", short.is_err, true);;
+    let long = *write_format(stdin, (many,), "{}").to_result;
+    assert_eq(|_|"long: the error is returned", long.is_err, true);;
+    pure()
+);
+
 // Tests that `flush_if_full` of a handle keeps a text of up to `_buffer_size` bytes, and writes out a
-// longer one and returns it emptied.
+// longer one and returns it emptied, and that the one `write_format` runs in returns the error of a
+// write that fails.
 test_flush_if_full : IO () = (
     let short = TextOut { _bytes : Array::fill(_buffer_size, 'a') };
     let written = *written_to_file(|h|
@@ -264,6 +332,9 @@ test_flush_if_full : IO () = (
         assert_eq(|_|"long: emptied", out.@_bytes.@size, 0)
     );
     assert_eq(|_|"long: written", written.@size, _buffer_size + 1);;
+    // The writer of `write_format` returns the error of a write that fails.
+    let failed = *((long.flush_if_full : _IOFailWriter TextOut).@_run)(stdin).to_result;
+    assert_eq(|_|"long: the error is returned", failed.is_err, true);;
     pure()
 );
 

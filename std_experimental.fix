@@ -3,7 +3,8 @@
 // `Std`.
 //
 // `String::format` fills the placeholders `{}` of a template with values of any types that
-// implement `Format`. `IO::printf` writes the same text to the standard output. A wrapper such as
+// implement `Format`. `IO::printf` writes the same text to the standard output, and
+// `IO::write_format` writes it to any handle, such as a file. A wrapper such as
 // `with_precision` or `right_aligned_to` changes how a value is written, and one wrapper can wrap
 // another:
 //
@@ -26,24 +27,31 @@ module Std.Experimental;
 
 import Std::{
     loop, loop_m, undefined, Array, Bool, Eq, F32, F64, Functor, I16, I32, I64, I8, IO, Identity, Iterator, Monad, 
-    Option, Ptr, Result, String, ToString, U16, U32, U64, U8, 
+    I128, Option, Ptr, Result, String, ToString, U128, U16, U32, U64, U8, 
     Array::{
         @, @capacity, @size, _check_range, _unsafe_copy_range_bounds_unchecked, _unsafe_grow_size, 
         append, empty, get_sub, pop_back, push_back, reserve, resize, set, truncate, 
         unsafe_set_bounds_unchecked
     }, 
-    F32::{_fixed_text_max_length, _shortest_text_max_length, _write_fixed_text, _write_shortest_text}, 
-    F64::{_fixed_text_max_length, _shortest_text_max_length, _write_fixed_text, _write_shortest_text}, 
-    I64::_sign_and_magnitude, 
-    IO::{IOHandle, flush, stderr, stdout, unsafe_perform, write_bytes, IOFail::to_result}, 
+    F32::{
+        _exp_text_max_length, _fixed_text_max_length, _shortest_text_max_length, _write_exp_text, 
+        _write_fixed_text, _write_shortest_text
+    }, 
+    F64::{
+        _exp_text_max_length, _fixed_text_max_length, _shortest_text_max_length, _write_exp_text, 
+        _write_fixed_text, _write_shortest_text
+    }, 
+    I64::_sign_and_magnitude, I128::_sign_and_magnitude, U64::maximum, 
+    IO::{IOFail, IOHandle, flush, stderr, stdout, unsafe_perform, write_bytes, IOFail::to_result}, 
     Iterator::{Item, advance, fold, map, range}, Array::to_iter, LessThan::{max, min}, 
     Functor::map, LoopState::{break, break_m, continue, continue_m}, Monad::{bind, pure}, 
     Option::{as_some, is_none}, Result::{as_err, as_ok, is_ok}, 
     String::{
-        @size, _address_length, _decimal_integer_length, _write_address, _write_decimal_integer, 
+        @size, _address_length, _decimal_chunk_divisor, _decimal_chunk_length, 
+        _decimal_integer_length, _write_address, _write_decimal_integer, _write_padded_decimal_digits, 
         from_U8, get_bytes, get_sub, join
     }, 
-    ToI64::i64, ToString::to_string, ToU64::u64, U8::bit_and
+    ToI64::i64, ToString::to_string, ToU128::u128, ToU64::u64, U8::bit_and
 };
 
 namespace String {
@@ -116,6 +124,31 @@ namespace IO {
     // * `template` - The template.
     eprintfln : [args : FormatArgs] args -> String -> IO () = |values, template| _write_format(stderr, "\n", values, template);
 
+    // Formats `values` into `template`, as `format` does, and writes the result to `handle`.
+    //
+    // The text is written as `printf` writes it, so a long text is never held in memory as one
+    // text. If a write fails, the rest of the text is not written, and the error is returned.
+    //
+    // # Examples
+    //
+    // ```fix
+    // # module DocTest;
+    // # import Std.Experimental;
+    // #
+    // main : IO () = write_format(stdout, (1, 2.5), "{} + {}\n").try(eprintln);
+    // ```
+    //
+    // # Parameters
+    // * `handle` - The handle to write to.
+    // * `values` - The values to write, in order.
+    // * `template` - The template.
+    write_format : [args : FormatArgs] IOHandle -> args -> String -> IOFail () = |handle, values, template| (
+        let cursor = _start_template(template, TextOut { _bytes : Array::empty(_initial_capacity(template)) });
+        let writer : _IOFailWriter TemplateCursor = cursor.write_args(values);
+        let cursor = *(writer.@_run)(handle);
+        write_bytes(handle, cursor._finish.@_bytes)
+    );
+
     // Formats `values` into `template`, and writes the result and then `ending` to `handle`. Write
     // errors are ignored, as in `print`.
     //
@@ -126,7 +159,8 @@ namespace IO {
     // * `template` - The template.
     _write_format : [args : FormatArgs] IOHandle -> String -> args -> String -> IO () = |handle, ending, values, template| (
         let cursor = _start_template(template, TextOut { _bytes : Array::empty(_initial_capacity(template)) });
-        let cursor = *(cursor.write_args(values).@_run)(handle);
+        let writer : _HandleWriter TemplateCursor = cursor.write_args(values);
+        let cursor = *(writer.@_run)(handle);
         let bytes = cursor._finish.@_bytes.append(ending.get_bytes).pop_back;
         write_bytes(handle, bytes).to_result;;
         pure()
@@ -241,6 +275,34 @@ namespace Format::TextOut {
         out._write_decimal_integer(negative, magnitude)
     );
 
+    // Appends the decimal text of the integer whose sign is `negative` and whose magnitude is
+    // `magnitude`, as `_write_decimal_integer` does, with magnitudes up to those of the 128-bit
+    // integers.
+    //
+    // # Parameters
+    // * `negative` - Whether the integer is below zero.
+    // * `magnitude` - The absolute value of the integer.
+    // * `out` - The text written so far.
+    _write_decimal_integer_128 : Bool -> U128 -> TextOut -> TextOut = |negative, magnitude, out| (
+        // Chunks of `_decimal_chunk_length` digits are cut off the end until the leading digits fit
+        // in a `U64`.
+        let (chunk_count, leading) = loop((0, magnitude), |(count, rest)| (
+            if rest <= U64::maximum.u128 { break $ (count, rest.u64) };
+            continue $ (count + 1, rest / _decimal_chunk_divisor)
+        ));
+        let length = _decimal_integer_length(negative, leading) + _decimal_chunk_length * chunk_count;
+        let end = out.@_bytes.@size + length;
+        // The added bytes are not initialized; the digits fill all of them.
+        let bytes = out._reserve_to_append(length)._unsafe_grow_size(end);
+        let bytes = loop((end, magnitude, bytes), |(end, rest, bytes)| (
+            if rest <= U64::maximum.u128 { break $ bytes._write_decimal_integer(end, negative, rest.u64) };
+            let chunk = (rest % _decimal_chunk_divisor).u64;
+            let bytes = bytes._write_padded_decimal_digits(end, _decimal_chunk_length, chunk);
+            continue $ (end - _decimal_chunk_length, rest / _decimal_chunk_divisor, bytes)
+        ));
+        TextOut { _bytes : bytes }
+    );
+
     // Appends the address `ptr` holds, as sixteen hexadecimal digits.
     //
     // # Parameters
@@ -251,6 +313,30 @@ namespace Format::TextOut {
         // The added bytes are not initialized; `_write_address` fills all of them.
         let bytes = out._reserve_to_append(String::_address_length)._unsafe_grow_size(end);
         TextOut { _bytes : bytes._write_address(end - String::_address_length, ptr) }
+    );
+
+    // Inserts `count` copies of `byte` at index `at` of the text, moving the bytes from `at` on to
+    // the right. Nothing is inserted if `count` is less than 1.
+    //
+    // # Parameters
+    // * `at` - The index to insert at. It must be at most the size of the text.
+    // * `count` - The number of bytes to insert.
+    // * `byte` - The byte to insert.
+    // * `out` - The text written so far.
+    _insert_bytes : I64 -> I64 -> U8 -> TextOut -> TextOut = |at, count, byte, out| (
+        if count <= 0 { out };
+        // Grow the text by `count` bytes, move the bytes from `at` on to the right, starting from
+        // the last one, and then fill the gap.
+        let bytes = out._write_spaces(count).@_bytes;
+        let end = bytes.@size - count;
+        let bytes = loop((end, bytes), |(i, bytes)|
+            if i == at { break $ bytes };
+            let i = i - 1;
+            let c = bytes.@(i);
+            continue $ (i, bytes.set(i + count, c))
+        );
+        let bytes = range(at, at + count).fold(bytes, |i, bytes| bytes.set(i, byte));
+        TextOut { _bytes : bytes }
     );
 
     // Appends `count` spaces. Nothing is appended if `count` is less than 1.
@@ -327,8 +413,13 @@ impl Identity : TextWriter {
 }
 
 namespace Format {
-    // An action that writes text to the handle it is given. `printf` runs in it.
+    // An action that writes text to the handle it is given, ignoring write errors as `print` does.
+    // `printf` runs in it.
     type _HandleWriter a = struct { _run : IOHandle -> IO a };
+
+    // An action that writes text to the handle it is given, and fails where a write fails.
+    // `write_format` runs in it.
+    type _IOFailWriter a = struct { _run : IOHandle -> IOFail a };
 }
 
 impl _HandleWriter : Functor {
@@ -347,6 +438,25 @@ impl _HandleWriter : TextWriter {
         if bytes.@size <= _buffer_size { pure(out) };
         // Write errors are ignored, as in `print`.
         write_bytes(handle, bytes).to_result;;
+        pure $ TextOut { _bytes : bytes.truncate(0) }
+    ) };
+}
+
+impl _IOFailWriter : Functor {
+    map = |f, writer| _IOFailWriter { _run : |handle| (writer.@_run)(handle).map(f) };
+}
+
+impl _IOFailWriter : Monad {
+    pure = |x| _IOFailWriter { _run : |_| pure(x) };
+    bind = |f, writer| _IOFailWriter { _run : |handle| (writer.@_run)(handle).bind(|x| (f(x).@_run)(handle)) };
+}
+
+// Writes the text to the handle once it is longer than `_buffer_size`.
+impl _IOFailWriter : TextWriter {
+    flush_if_full = |out| _IOFailWriter { _run : |handle| (
+        let bytes = out.@_bytes;
+        if bytes.@size <= _buffer_size { pure(out) };
+        write_bytes(handle, bytes);;
         pure $ TextOut { _bytes : bytes.truncate(0) }
     ) };
 }
@@ -542,6 +652,17 @@ impl I64 : Format {
     write_text = |v, out| pure $ out._write_signed_decimal_integer(v);
 }
 
+impl U128 : Format {
+    write_text = |v, out| pure $ out._write_decimal_integer_128(false, v);
+}
+
+impl I128 : Format {
+    write_text = |v, out| (
+        let (negative, magnitude) = v._sign_and_magnitude;
+        pure $ out._write_decimal_integer_128(negative, magnitude)
+    );
+}
+
 // Writes sixteen hexadecimal digits, as `to_string` does.
 impl Ptr : Format {
     write_text = |v, out| pure $ out._write_address(v);
@@ -641,6 +762,63 @@ impl WithPrecision F64 : Format {
 }
 
 namespace Format {
+    // A floating-point number written with one digit before the decimal point, a fixed number of
+    // digits after it, and a power of ten. Created by `F32::with_exp_precision` or
+    // `F64::with_exp_precision`.
+    type WithExpPrecision a = struct { _precision : U8, _value : a };
+}
+
+namespace F32 {
+    // Wraps `v` so that `format` writes it with one digit before the decimal point, `precision`
+    // digits after it, and a power of ten, as `F32::to_string_exp_precision` does.
+    //
+    // # Examples
+    //
+    // ```fix
+    // assert_eq(|_|"", "{}".format((123.456_F32.with_exp_precision(2_U8),)), "1.23e2")
+    // ```
+    //
+    // # Parameters
+    // * `precision` - The number of digits after the decimal point.
+    // * `v` - The number.
+    with_exp_precision : U8 -> F32 -> WithExpPrecision F32 = |precision, v| WithExpPrecision { _precision : precision, _value : v };
+}
+
+namespace F64 {
+    // Wraps `v` so that `format` writes it with one digit before the decimal point, `precision`
+    // digits after it, and a power of ten, as `F64::to_string_exp_precision` does.
+    //
+    // # Examples
+    //
+    // ```fix
+    // assert_eq(|_|"", "{}".format((123.456.with_exp_precision(2_U8),)), "1.23e2")
+    // ```
+    //
+    // # Parameters
+    // * `precision` - The number of digits after the decimal point.
+    // * `v` - The number.
+    with_exp_precision : U8 -> F64 -> WithExpPrecision F64 = |precision, v| WithExpPrecision { _precision : precision, _value : v };
+}
+
+impl WithExpPrecision F32 : Format {
+    write_text = |w, out| (
+        let precision = w.@_precision;
+        let v = w.@_value;
+        let (at, bytes) = out._reserve_to_write(F32::_exp_text_max_length(precision));
+        pure $ _finish_write $ bytes.F32::_write_exp_text(at, precision, v)
+    );
+}
+
+impl WithExpPrecision F64 : Format {
+    write_text = |w, out| (
+        let precision = w.@_precision;
+        let v = w.@_value;
+        let (at, bytes) = out._reserve_to_write(F64::_exp_text_max_length(precision));
+        pure $ _finish_write $ bytes.F64::_write_exp_text(at, precision, v)
+    );
+}
+
+namespace Format {
     // The elements of an iterator, written with a separator between them. Created by
     // `Iterator::joined_with`.
     type Joined it = struct { _separator : String, _elements : it };
@@ -703,19 +881,41 @@ impl [a : Format] RightAligned a : Format {
         let start = out.@_bytes.@size;
         let Identity { data : out } = out.write_text(aligned.@_value);
         let padding = aligned.@_width - out._count_code_points_from(start);
-        if padding <= 0 { out };
-        // Move the text `padding` bytes to the right, starting from its last byte, and then fill the
-        // gap with spaces.
-        let bytes = out._write_spaces(padding).@_bytes;
-        let end = bytes.@size - padding;
-        let bytes = loop((end, bytes), |(i, bytes)|
-            if i == start { break $ bytes };
-            let i = i - 1;
-            let c = bytes.@(i);
-            continue $ (i, bytes.set(i + padding, c))
-        );
-        let bytes = range(start, start + padding).fold(bytes, |i, bytes| bytes.set(i, ' '));
-        TextOut { _bytes : bytes }
+        out._insert_bytes(start, padding, ' ')
+    );
+}
+
+namespace Format {
+    // A value padded with zeros on the left to a width, after its minus sign if it has one. Created
+    // by `zero_padded_to`.
+    type ZeroPadded a = struct { _width : I64, _value : a };
+
+    // Wraps `value` so that `format` pads its text with `0` to `width` Unicode code points. The
+    // zeros go after the `-` that the text starts with, if it starts with one, and before the text
+    // otherwise. A text that already has `width` code points or more is written unchanged.
+    //
+    // # Examples
+    //
+    // ```fix
+    // assert_eq(|_|"", "{}:{}".format((9.zero_padded_to(2), 5.zero_padded_to(2))), "09:05");;
+    // assert_eq(|_|"", "{}".format(((-5).zero_padded_to(3),)), "-05")
+    // ```
+    //
+    // # Parameters
+    // * `width` - The minimum width, in Unicode code points.
+    // * `value` - The value to write.
+    zero_padded_to : I64 -> a -> ZeroPadded a = |width, value| ZeroPadded { _width : width, _value : value };
+}
+
+// Writes the value in `Identity`, so that its whole text is in `out` when it is measured and moved.
+impl [a : Format] ZeroPadded a : Format {
+    write_text = |padded, out| pure $ (
+        let start = out.@_bytes.@size;
+        let Identity { data : out } = out.write_text(padded.@_value);
+        let padding = padded.@_width - out._count_code_points_from(start);
+        let bytes = out.@_bytes;
+        let at = if start < bytes.@size && bytes.@(start) == '-' { start + 1 } else { start };
+        out._insert_bytes(at, padding, '0')
     );
 }
 
